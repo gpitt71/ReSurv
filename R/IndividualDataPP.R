@@ -4,7 +4,7 @@
 #'
 #' @param data \code{data.frame}, for the individual reserving. The number of development periods can be larger than the number of accident periods.
 #' @param id \code{character}, \code{data} column that contains the policy identifier.
-#' @param continuous_features \code{character}, continuous features columns to be scaled.
+#' @param continuous_features_frequency \code{character}, continuous features columns to be scaled.
 #' @param categorical_features \code{character}, categorical features columns to be one-hot encoded.
 #' @param accident_period \code{character}, it contains the name of the column in data corresponding to the accident period.
 #' @param calendar_period \code{character}, it contains the name of the column in data corresponding to the calendar period.
@@ -53,7 +53,6 @@
 #' @return \code{IndividualDataPP} object. A list containing:
 #'  \itemize{
 #' \item{\code{full.data}: the input data after pre-processing.}
-#' \item{\code{starting.data}: the input data as they were provided from the user.}
 #' \item{\code{training.data}: the input data pre-processed for training.}
 #' \item{\code{conversion_factor}: the conversion factor for going from input granularity to output granularity. E.g, the conversion factor for going from months to quarters is 1/3.}
 #' \item{\code{string_formula_i}: string of the \code{survival} formula to model the data in input granularity.}
@@ -85,15 +84,19 @@
 #' @export
 IndividualDataPP <- function(data,
                            id=NULL,
-                           continuous_features,
-                           categorical_features,
+                           continuous_features_frequency,
+                           continuous_features_severity,
+                           categorical_features_frequency,
+                           categorical_features_severity,
                            accident_period,
                            calendar_period,
+                           severity,
+                           delta,
                            input_time_granularity="months",
                            output_time_granularity="quarters",
                            years=4,
                            calendar_period_extrapolation=FALSE,
-                           continuous_features_spline=NULL,
+                           continuous_features_spline_frequency=NULL,
                            degrees_cf=3,
                            degrees_of_freedom_cf=4,
                            degrees_cp=3,
@@ -122,8 +125,8 @@ IndividualDataPP <- function(data,
   tmp.dp <- tmp.cp-tmp.ap+1
 
   # Check the ap among features
-  continuous_features<-pkg.env$fix.double.ap(features=continuous_features,accident_period=accident_period)
-  categorical_features<-pkg.env$fix.double.ap(features=categorical_features,accident_period=accident_period)
+  continuous_features<-pkg.env$fix.double.ap(features=continuous_features_frequency,accident_period=accident_period)
+  categorical_features<-pkg.env$fix.double.ap(features=categorical_features_frequency,accident_period=accident_period)
 
   # The following checks warn you if there is a missing accident period or reporting period
   # in the data. They do not interrupt the code.
@@ -219,14 +222,19 @@ IndividualDataPP <- function(data,
                                              input_output='o')
 
 
+
+
+
+
   # Create and organize the output
   out <- list(full.data = tmp,
-              starting.data = data,
               training.data = train,
               conversion_factor=conversion_factor,
               string_formula_i=string_formula_i,
               string_formula_o=string_formula_o,
-              continuous_features=continuous_features,
+              continuous_features=continuous_features_frequency,
+              continuous_features_severity=continuous_features_severity,
+              categorical_features_severity=categorical_features_severity,
               categorical_features=categorical_features,
               calendar_period_extrapolation=calendar_period_extrapolation,
               years=years,
@@ -234,7 +242,6 @@ IndividualDataPP <- function(data,
               calendar_period=calendar_period,
               input_time_granularity=input_time_granularity,
               output_time_granularity=output_time_granularity)
-
   # Return the correct output
   class(out) <- "IndividualDataPP"
 

@@ -146,16 +146,18 @@ survival_crps.ReSurvFit <- function(ReSurvFit,
            I) %>%
     as.data.table()}else{
 
-      tmp_cond= colnames(ReSurvFit$IndividualDataPP$starting.data) %in% colnames(user_data_set)
 
-      tmp_training_set = ReSurvFit$IndividualDataPP$starting.data[,tmp_cond]
+      # In the new package version we do not carry the starting.data around.
+      # tmp_cond= colnames(ReSurvFit$IndividualDataPP$starting.data) %in% colnames(user_data_set)
+
+      # tmp_training_set = ReSurvFit$IndividualDataPP$starting.data[,tmp_cond]
 
       # Simple rbind (full starting data and new data to compute CRPS)
-      tmp_fdata = rbind(tmp_training_set,
-                        user_data_set)
+      # tmp_fdata = rbind(tmp_training_set,
+                        # user_data_set)
 
       # Process the data
-      tmp_idata = IndividualDataPP(tmp_fdata,
+      tmp_idata = IndividualDataPP(user_data_set,
                                  continuous_features=continuous_features,
                                  categorical_features=categorical_features,
                                  accident_period=ReSurvFit$IndividualDataPP$accident_period,
