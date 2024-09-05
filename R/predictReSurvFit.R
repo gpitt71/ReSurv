@@ -3,7 +3,6 @@
 #' This function predicts the results from the ReSurv fits.
 #'
 #' @param object \code{ResurvFit} object specifying start time, end time and status.
-#' @param newdata \code{IndividualDataPP} object that contains new data to predict.
 #' @param grouping_method \code{character}, use probability or exposure approach to group from input to output development factors. Choice between:
 #' \itemize{
 #' \item{\code{"exposure"}}
@@ -37,7 +36,9 @@ predict.ReSurvFit <- function(object,
     idata <- object$IndividualDataPP
 
 
-    }
+  }
+
+  # browser()
 
   hazard_frame <-object$hazard_frame
   # browser()
@@ -66,6 +67,7 @@ predict.ReSurvFit <- function(object,
     calendar_period_extrapolation = idata$calendar_period_extrapolation
   )
 
+  # browser()
   max_DP <- max(bind_rows(idata$training.data, missing.obsevations)$DP_rev_o)
 
 
@@ -76,6 +78,7 @@ predict.ReSurvFit <- function(object,
     min_DP_rev_i = min(hazard_frame_grouped$hazard_group$DP_rev_i)
   )
 
+  # browser()
   df_i <- pkg.env$retrieve_df_i(
     hazard_data_frame = hazard_frame_grouped$hazard_group,
     groups = hazard_frame_grouped$groups
@@ -89,10 +92,10 @@ predict.ReSurvFit <- function(object,
     df_i = df_i,
     groups = hazard_frame_grouped$groups)
 
-  # browser()
-  if(idata$conversion_factor != 1){
 
-    development_periods <- distinct(select(data.frame(idata$training), AP_i, AP_o))
+  if(idata$conversion_factor != 1){
+    # browser()
+    development_periods <- distinct(select(data.frame(idata$training.data), AP_i, AP_o))
 
     # Calculate the minimum and maximum development periods for each row in development_periods for each DP_rev_o
     dp_ranges <- t(lapply(1:max_DP, function(DP_rev_o) {
@@ -102,6 +105,7 @@ predict.ReSurvFit <- function(object,
     }
     ))
 
+    # browser()
     dp_ranges <- do.call(rbind, dp_ranges)
 
 
@@ -174,6 +178,7 @@ predict.ReSurvFit <- function(object,
 
     }
 
+    # browser()
     expected_o <-pkg.env$predict_o(expected_i = expected_i,
                                    groups = hazard_frame_grouped$groups,
                                    conversion_factor = idata$conversion_factor,
@@ -181,7 +186,7 @@ predict.ReSurvFit <- function(object,
                                    input_time_granularity = object$IndividualDataPP$input_time_granularity)
 
 
-
+    # browser()
     development_factor_o <- pkg.env$i_to_o_development_factor(
       hazard_data_frame=hazard_frame_grouped$hazard_group,
       expected_i = expected_i,
@@ -210,7 +215,7 @@ predict.ReSurvFit <- function(object,
       map_df(rev) %>%
       mutate(DP_o=row_number())
 
-
+    # browser()
     hazard_frame_output <- pkg.env$output_hazard_frame(
       hazard_frame_input=hazard_frame_input,
       expected_o=expected_o,
@@ -220,6 +225,7 @@ predict.ReSurvFit <- function(object,
       groups = hazard_frame_grouped$groups
     )
 
+    # browser()
     out=list(ReSurvFit = object,
              df_output = df_o,
              df_input = df_i,

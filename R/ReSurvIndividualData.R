@@ -268,7 +268,7 @@ ReSurv.IndividualDataPP <- function(IndividualDataPP,
   newdata <- create.df.2.fcst(IndividualDataPP=IndividualDataPP,
                               hazard_model=hazard_model)
 
-
+  # browser()
   # create data frame of occurrencies to weight development factors
   # Om.df <-   pkg.env$create.om.df(training.data=IndividualDataPP$training.data,
                                   # input_time_granularity=IndividualDataPP$input_time_granularity,
@@ -278,7 +278,7 @@ ReSurv.IndividualDataPP <- function(IndividualDataPP,
 
   if(hazard_model=="COX"){
 
-
+    # browser()
     data=IndividualDataPP$training.data
 
     X=data %>%
@@ -302,7 +302,7 @@ ReSurv.IndividualDataPP <- function(IndividualDataPP,
     #                    DP_rev_i=ceiling(bs_hazard$time))  #$hazard
 
     ## NEW BASELINE COMPUTATION (RESURV)
-
+    # browser()
     X_tmp_bsln <- pkg.env$model.matrix.creator(data= IndividualDataPP$training.data,
                                       select_columns = IndividualDataPP$categorical_features,
                                       remove_first_dummy=T)
@@ -314,7 +314,7 @@ ReSurv.IndividualDataPP <- function(IndividualDataPP,
                      scaler))
 
     # training_test_split = pkg.env$check.traintestsplit(percentage_data_training)
-
+    # browser()
     X_tmp_bsln=cbind(X_tmp_bsln,Xc_tmp_bsln)
 
     bsln <- pkg.env$baseline.calc(hazard_model = hazard_model,
@@ -327,6 +327,7 @@ ReSurv.IndividualDataPP <- function(IndividualDataPP,
                        DP_rev_i=sort(as.integer(unique(IndividualDataPP$training.data$DP_rev_i))))
 
     ### make it relative
+    # browser()
     newdata.bs <- ReSurv:::pkg.env$df.2.fcst.nn.pp(data=IndividualDataPP$training.data,
                                                    newdata=newdata,
                                                    continuous_features=IndividualDataPP$continuous_features,

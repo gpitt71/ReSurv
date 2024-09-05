@@ -7,15 +7,20 @@
 IndividualDataPP(
   data,
   id = NULL,
-  continuous_features,
-  categorical_features,
+  continuous_features_frequency,
+  continuous_features_severity,
+  categorical_features_frequency,
+  categorical_features_severity,
   accident_period,
   calendar_period,
+  severity = NULL,
+  delta,
+  calendar_period_severity,
   input_time_granularity = "months",
   output_time_granularity = "quarters",
   years = 4,
   calendar_period_extrapolation = FALSE,
-  continuous_features_spline = NULL,
+  continuous_features_spline_frequency = NULL,
   degrees_cf = 3,
   degrees_of_freedom_cf = 4,
   degrees_cp = 3,
@@ -27,9 +32,7 @@ IndividualDataPP(
 
 \item{id}{\code{character}, \code{data} column that contains the policy identifier.}
 
-\item{continuous_features}{\code{character}, continuous features columns to be scaled.}
-
-\item{categorical_features}{\code{character}, categorical features columns to be one-hot encoded.}
+\item{continuous_features_frequency}{\code{character}, continuous features columns to be scaled.}
 
 \item{accident_period}{\code{character}, it contains the name of the column in data corresponding to the accident period.}
 
@@ -59,8 +62,6 @@ Default to \code{quarters}.}
 \item{calendar_period_extrapolation}{\code{character}, whether a spline for calendar extrapolation should be considered in the cox model fit.
 Default is `FALSE`.}
 
-\item{continuous_features_spline}{\code{logical}, weather a spline for smoothing continuous features should be added.}
-
 \item{degrees_cf}{\code{numeric}, degrees of the spline for smoothing continuous features.}
 
 \item{degrees_of_freedom_cf}{\code{numeric}, degrees of freedom of the splines for smoothing continuous features.}
@@ -68,12 +69,15 @@ Default is `FALSE`.}
 \item{degrees_cp}{\code{numeric}, degrees of the spline for smoothing the calendar period effect.}
 
 \item{degrees_of_freedom_cp}{\code{numeric}, degrees of freedom of the splines for smoothing the calendar period effect.}
+
+\item{categorical_features}{\code{character}, categorical features columns to be one-hot encoded.}
+
+\item{continuous_features_spline}{\code{logical}, weather a spline for smoothing continuous features should be added.}
 }
 \value{
 \code{IndividualDataPP} object. A list containing:
  \itemize{
 \item{\code{full.data}: the input data after pre-processing.}
-\item{\code{starting.data}: the input data as they were provided from the user.}
 \item{\code{training.data}: the input data pre-processed for training.}
 \item{\code{conversion_factor}: the conversion factor for going from input granularity to output granularity. E.g, the conversion factor for going from months to quarters is 1/3.}
 \item{\code{string_formula_i}: string of the \code{survival} formula to model the data in input granularity.}

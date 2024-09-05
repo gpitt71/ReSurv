@@ -79,7 +79,7 @@
 #'
 #'
 #' @references
-#' Munir, H., Emil, H., & Gabriele, P. (2023). A machine learning approach based on survival analysis for IBNR frequencies in non-life reserving. arXiv preprint arXiv:2312.14549.
+#' Hiabu, M., Hofman, E., & Pittarello, G. (2023). A machine learning approach based on survival analysis for IBNR frequencies in non-life reserving. arXiv preprint arXiv:2312.14549.
 #'
 #' @export
 IndividualDataPP <- function(data,
@@ -90,8 +90,9 @@ IndividualDataPP <- function(data,
                            categorical_features_severity,
                            accident_period,
                            calendar_period,
-                           severity,
-                           delta,
+                           severity=NULL,
+                           delta=NULL,
+                           calendar_period_severity=NULL,
                            input_time_granularity="months",
                            output_time_granularity="quarters",
                            years=4,
@@ -102,11 +103,8 @@ IndividualDataPP <- function(data,
                            degrees_cp=3,
                            degrees_of_freedom_cp=4){
 
-
-
   # Work on a copy of the input data
   tmp <- as.data.frame(data)
-  # browser()
 
   # Accident periods encoding
   x.ap <- pkg.env$check.dates.consistency(tmp[,accident_period],
@@ -121,7 +119,7 @@ IndividualDataPP <- function(data,
   tmp.cp <- pkg.env$encode.variables.cp(x.cp,
                                         ap1=min(x.ap))
   # Development periods encoding
-  # browser()
+
   tmp.dp <- tmp.cp-tmp.ap+1
 
   # Check the ap among features
@@ -153,18 +151,23 @@ IndividualDataPP <- function(data,
 
 
 
+  max_dp_i =  pkg.env$maximum.time(years,input_time_granularity)
+
   # Build the variables you need
   tmp = tmp %>%
     mutate(AP_i=tmp.ap,
            DP_i=tmp.dp,
            RP_i=tmp.cp,
-           DP_rev_i = pkg.env$maximum.time(years,input_time_granularity) - DP_i+1,
+           DP_rev_i = max_dp_i - DP_i+1,
            TR_i = AP_i-1, #just setting truncation to max year simulated. and accounting for
            I=1) %>%
     as.data.frame()
 
-  max_dp_i =  pkg.env$maximum.time(years,input_time_granularity)
-
+  if(!is.null(id)){
+    tmp <- tmp %>%
+      group_by(get(id)) %>%
+      slice_head(n = 1) %>% as.data.frame()
+  }
   # Take the training data (upper triangle) and convert it from input_time_granularitys to output_time_granularitys
   train= tmp %>%
     filter(DP_rev_i > TR_i) %>%
@@ -201,7 +204,7 @@ IndividualDataPP <- function(data,
 
   string_formula_i <- pkg.env$formula.editor(continuous_features=continuous_features,
                                              categorical_features=categorical_features,
-                                             continuous_features_spline=continuous_features_spline,
+                                             continuous_features_spline=continuous_features_spline_frequency,
                                              degree_cf=degrees_cf,
                                              degrees_of_freedom_cf=degrees_of_freedom_cf,
                                              calendar_period="RP_i",
@@ -212,7 +215,7 @@ IndividualDataPP <- function(data,
 
   string_formula_o <- pkg.env$formula.editor(continuous_features=continuous_features,
                                              categorical_features=categorical_features,
-                                             continuous_features_spline=continuous_features_spline,
+                                             continuous_features_spline=continuous_features_spline_frequency,
                                              degree_cf=degrees_cf,
                                              degrees_of_freedom_cf=degrees_of_freedom_cf,
                                              calendar_period="RP_o",
@@ -222,17 +225,51 @@ IndividualDataPP <- function(data,
                                              input_output='o')
 
 
+  # Same process for the severity
+  dt.rf=NULL
+  if(!is.null(severity)){
+
+    severity_data <- data
+
+    x.cps <- pkg.env$check.dates.consistency(severity_data[[calendar_period_severity]],
+                                            input_time_granularity=input_time_granularity,
+                                            ap1=min(severity_data[[accident_period]]))
+    tmp.cps <- pkg.env$encode.variables.cp(x.cps,
+                                          ap1=min(x.ap))
 
 
+    # Development periods encoding
 
+    tmp.dp <- pkg.env$cap_continuous_variables(tmp.cps-tmp.ap+1,
+                                               max_dp_i)
+
+    severity_data[,accident_period] <- tmp.ap
+
+    severity_data=severity_data %>%
+      mutate(DP_i=tmp.dp,
+             CP_i=tmp.ap+tmp.dp-1)  %>%as.data.table()
+
+  # browser()
+  dt.rbns <- severity_data[(CP_i)<=max_dp_i & (tmp.cp)<=max_dp_i]
+  dt.rbnyp <- severity_data[(CP_i)>max_dp_i & (tmp.cp)<=max_dp_i]
+  # browser()
+  tmp.groups <- c(id,categorical_features_severity,continuous_features_severity)
+
+  tmp.a <- dt.rbnyp[, .(delta = 0, size = 1e-08), by = tmp.groups]
+  tmp.b <- dt.rbns[, .(delta = max(get(..delta)), size = sum(get(..severity))),by = tmp.groups]
+
+  dt.rf <- rbind(tmp.a,tmp.b)
+
+  }
 
   # Create and organize the output
   out <- list(full.data = tmp,
               training.data = train,
+              training.severity=dt.rf,
               conversion_factor=conversion_factor,
               string_formula_i=string_formula_i,
               string_formula_o=string_formula_o,
-              continuous_features=continuous_features_frequency,
+              continuous_features=continuous_features,
               continuous_features_severity=continuous_features_severity,
               categorical_features_severity=categorical_features_severity,
               categorical_features=categorical_features,

@@ -763,7 +763,7 @@ pkg.env$check.dates.consistency <- function(x,
                                             input_time_granularity,
                                             ap1){
 "
-This function checks weather the accident date and the reporting date are of 'Date' class.
+This function checks if the accident date and the reporting date are of 'Date' class.
 In case they are, it transforms them into numeric.
 "
 
@@ -3148,6 +3148,19 @@ survival_information<-function(x,
 
 }
 
+## Severity model ----
+
+
+pkg.env$cap_continuous_variables <- function(x,cap){
+
+  "
+  Given a vector x returns all the data bigger or equal than a cap equal to the cap.
+  "
+
+  if(sum(x>=cap)>0){x[x>=cap] <- cap}
+
+  return(x)
+}
 
 
 
