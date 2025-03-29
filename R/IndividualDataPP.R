@@ -143,6 +143,8 @@ IndividualDataPP <- function(data,
                            input_time_granularity="months",
                            output_time_granularity="quarters",
                            years=NULL,
+                           terminal_age=NULL,
+                           reference_age=NULL,
                            calendar_period_extrapolation=FALSE,
                            continuous_features_spline=NULL,
                            degrees_cf=3,
@@ -201,6 +203,8 @@ IndividualDataPP <- function(data,
 
 
 
+
+
   if(is.null(years)){
 
     years <- pkg.env$total.years.in.the.data(input_time_granularity,
@@ -209,7 +213,28 @@ IndividualDataPP <- function(data,
   }
 
 
+
+
+
+
+  if(!is.null(terminal_age) & !is.null(reference_age)){
+    # Mortality ----
+    max_dp_i = terminal_age - reference_age
+    max_dp_in_sample =  pkg.env$maximum.time(years,input_time_granularity)
+
+
+    setDT(tmp)
+
+    # Perform the mutations using data.table syntax
+    tmp <- tmp[, c("AP_i", "DP_i", "RP_i" ) := list(tmp.ap, tmp.dp, tmp.cp)][, c("DP_rev_i", "TR_i", "I") :=
+                                                                                list(max_dp_i - DP_i + 1, AP_i - 1 + (max_dp_i - max_dp_in_sample), 1)]
+
+
+  }else{
+  # Reserving ----
+
   max_dp_i =  pkg.env$maximum.time(years,input_time_granularity)
+
   # Build the variables you need
   tmp = tmp %>%
     mutate(AP_i=tmp.ap,
@@ -226,6 +251,8 @@ IndividualDataPP <- function(data,
     tmp <- tmp %>%
       group_by(get(id)) %>%
       slice_head(n = 1) %>% as.data.frame()
+  }
+
   }
 
   # Take the training data (upper triangle) and convert it from input_time_granularitys to output_time_granularitys
@@ -261,6 +288,8 @@ IndividualDataPP <- function(data,
       as.data.frame()
 
   }
+
+
 
   string_formula_i <- pkg.env$formula.editor(continuous_features=continuous_features,
                                              categorical_features=categorical_features,
