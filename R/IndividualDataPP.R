@@ -151,23 +151,36 @@ IndividualDataPP <- function(data,
                            degrees_of_freedom_cp=4){
 
 
-  # browser()
   # Work on a copy of the input data
   tmp <- as.data.table(data)
   # browser()
 
+  if(inherits(tmp[,get(accident_period)], "Date")){
+    ap1=floor_date(min(tmp[,get(accident_period)]),"year")
+
+    ap1num <- pkg.env$check.dates.consistency(ap1,
+                                              input_time_granularity=input_time_granularity,
+                                              ap1=ap1)
+
+  }else{
+    ap1=min(tmp[,get(accident_period)])
+
+  }
+
+
   # Accident periods encoding
   x.ap <- pkg.env$check.dates.consistency(tmp[,get(accident_period)],
                                           input_time_granularity=input_time_granularity,
-                                          ap1=min(tmp[,get(accident_period)]))
-  tmp.ap <- pkg.env$encode.variables(x.ap)
+                                          ap1=ap1)
+  tmp.ap <- pkg.env$encode.variables(x.ap,
+                                     ap1=ap1num)
 
   # Calendar periods encoding
   x.cp <- pkg.env$check.dates.consistency(tmp[,get(calendar_period)],
                                           input_time_granularity=input_time_granularity,
-                                          ap1=min(tmp[,get(accident_period)]))
+                                          ap1=ap1)
   tmp.cp <- pkg.env$encode.variables.cp(x.cp,
-                                        ap1=min(x.ap))
+                                        ap1=ap1num)
   # Development periods encoding
   # browser()
   tmp.dp <- tmp.cp-tmp.ap+1
@@ -261,10 +274,10 @@ IndividualDataPP <- function(data,
   train<- train[, (categorical_features) := lapply(.SD, as.factor), .SDcols = categorical_features]
 
   train <- train[,.SD,.SDcols = c(id,
-                                  categorical_features,
+                                  unique(c(categorical_features,
                                   continuous_features,
+                                  "AP_i")),
                                   switch(calendar_period_extrapolation, 'RP_i', NULL),
-                                  "AP_i",
                                   "AP_o",
                                   "DP_i",
                                   "DP_rev_i",

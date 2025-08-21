@@ -1098,13 +1098,14 @@ In case they are, it transforms them into numeric.
 }
 
 
-pkg.env$encode.variables <- function(x){
+pkg.env$encode.variables <- function(x,ap1){
   "
   This function encodes the periods.
   We impose that the indexization starts from 1.
 
   "
-  seq <- min(x):max(x)
+  # browser()
+  seq <- min(c(x,ap1)):max(x)
 
   dim = length(seq)
 
@@ -1500,7 +1501,7 @@ pkg.env$covariate_mapping <- function(hazard_frame,
   Create a dimension table, that holds a link between inputted categorical features and the group, that is used for expected_values
   "
 
-
+  browser()
   #Need to handle Accident/calender period effect seperatly
   if( (length(continuous_features)==1 & "AP_i" %in% continuous_features) |
       (length(continuous_features)==1 & "RP_i" %in% continuous_features) |
@@ -1533,27 +1534,65 @@ pkg.env$covariate_mapping <- function(hazard_frame,
     time_elements_1 <- paste(sapply(time_features, function(x){paste0("'",x,"'")}
     ), collapse=", ")
 
-    expression_0 <- paste0(sprintf(
-      "groups <- data.frame(%s, covariate = hazard_frame$covariate)",
-      time_elements_0    ),
-      " %>%distinct()%>%   mutate(group_i = row_number())")
+    # expression_0 <- paste0(sprintf(
+    #   "groups <- data.frame(%s, covariate = hazard_frame$covariate)",
+    #   time_elements_0    ),
+    #   " %>%distinct()%>%   mutate(group_i = row_number())")
 
-    expression_1 <- paste0(
-      "hazard_group <- hazard_frame %>%  left_join(groups, by=",
-      sprintf(
-        "c(%s, 'covariate'))",
-        time_elements_1    ) )
+
+    expression_0 <- sprintf(
+      "groups <- data.table(%s, covariate = hazard_frame$covariate)",
+      time_elements_0    )
 
     eval(parse(text=expression_0))
+
+    # Keep only unique rows and add row numbers
+    groups <- unique(groups)                # distinct rows
+    groups[, group_i := .I]
+
+
+    setDT(hazard_frame)
+
+
+    expression_1 <-(sprintf("hazard_group <-merge(
+      hazard_frame,
+      groups,
+      by = c(%s, 'covariate'),
+      all.x = TRUE
+    )",time_elements_1))
+
+    # expression_1 <- paste0(
+    #   "hazard_group <- hazard_frame %>%  left_join(groups, by=",
+    #   sprintf(
+    #     "c(%s, 'covariate'))",
+    #     time_elements_1    ) )
+
+
     eval(parse(text=expression_1))
 
 
   }else{
     #Only by covariate, since no time dependency.
-    groups <- unique(data.frame(covariate = hazard_frame$covariate)) %>%
-      mutate(group_i = row_number())
 
-    hazard_group <- hazard_frame %>%  left_join(groups, by=c("covariate"))
+
+    setDT(hazard_frame)
+
+    # Step 1: create unique groups with row numbers
+    groups <- unique(hazard_frame[, .(covariate)])
+    groups[, group_i := .I]  # .I gives row number
+
+    # Step 2: left join hazard_frame with groups
+    hazard_group <- merge(
+      hazard_frame,
+      groups,
+      by = "covariate",
+      all.x = TRUE
+    )
+
+    # groups <- unique(data.frame(covariate = hazard_frame$covariate)) %>%
+    #   mutate(group_i = row_number())
+    #
+    # hazard_group <- hazard_frame %>%  left_join(groups, by=c("covariate"))
   }
 
 
@@ -1575,24 +1614,47 @@ pkg.env$covariate_mapping <- function(hazard_frame,
     ), collapse=", ")
 
 
+    # expression_0 <- paste0(sprintf(
+    #   "      groups_o <- data.frame(%s, covariate = hazard_group$covariate)",
+    #   time_elements_0    ),
+    #   "%>% distinct() %>% mutate(group_o = row_number())")
+
     expression_0 <- paste0(sprintf(
-      "      groups_o <- data.frame(%s, covariate = hazard_group$covariate)",
-      time_elements_0    ),
-      "%>% distinct() %>% mutate(group_o = row_number())")
-
-    expression_1 <- paste0(
-      "groups <- groups %>% select(-group_o) %>%",
-      sprintf(
-        " mutate(%s)",
-        time_elements_1    ),
-      " %>% ",
-      sprintf(
-        " left_join(groups_o, by=c(%s, 'covariate'))",
-        time_elements_2    ) )
-
+      "      groups_o <- data.table(%s, covariate = hazard_group$covariate)",
+      time_elements_0    ))
 
     eval(parse(text=expression_0))
-    eval(parse(text=expression_1))
+
+    groups_o <- unique(groups_o)
+
+    # Add row numbers
+    groups_o[, group_o := .I]
+
+    groups[,group_o:=NULL]
+
+    groups[,(paste0(substr(time_features,1,2),"_o")):=lapply(.SD, function(x) ceiling(x*conversion_factor)),.SDcols = time_features]
+
+
+    groups <- merge(
+      groups,
+      groups_o,
+      by = c(paste0(substr(time_features,1,2),"_o"), "covariate"),
+      all.x = TRUE
+    )
+
+    # expression_1 <- paste0(
+    #   "groups <- groups %>% select(-group_o) %>%",
+    #   sprintf(
+    #     " mutate(%s)",
+    #     time_elements_1    ),
+    #   " %>% ",
+    #   sprintf(
+    #     " left_join(groups_o, by=c(%s, 'covariate'))",
+    #     time_elements_2    ) )
+
+
+
+    # eval(parse(text=expression_1))
 
   }
 
@@ -1750,6 +1812,7 @@ pkg.env$latest_observed_values_i <- function(data_reserve,
 
 pkg.env$name_covariates <-function(data, categorical_features, continuous_features){
 
+  browser()
   feats <- c(categorical_features,continuous_features)
 
   if(is.null(feats)){return(0)}

@@ -377,7 +377,7 @@ ReSurv.IndividualDataPP <- function(IndividualDataPP,
                                   simplifier=FALSE
 ){
 
-  browser()
+  # browser()
   set.seed(random_seed)
 
   formula_ct <- as.formula(IndividualDataPP$string_formula_i)
@@ -401,10 +401,14 @@ ReSurv.IndividualDataPP <- function(IndividualDataPP,
 
     data=IndividualDataPP$training.data
 
-    X=data %>%
-      select(c(IndividualDataPP$continuous_features,IndividualDataPP$categorical_features))
+    X=data[,.SD,
+           .SDcols=c(IndividualDataPP$continuous_features,IndividualDataPP$categorical_features)]
 
-    Y=data[,c("DP_rev_i", "I", "TR_i")]
+    # X=data %>%
+    #   select(c(IndividualDataPP$continuous_features,IndividualDataPP$categorical_features))
+
+    Y=data[,.SD,
+           .SDcols=c("DP_rev_i", "I", "TR_i")]
 
     model.out <- pkg.env$fit_cox_model(data=data,
                                        formula_ct=formula_ct,
@@ -417,7 +421,7 @@ ReSurv.IndividualDataPP <- function(IndividualDataPP,
       X_tmp_bsln = data.frame(rep(1,dim(Y)[1]))
 
     }else{
-
+      browser()
       scaler <- pkg.env$scaler(continuous_features_scaling_method = continuous_features_scaling_method)
 
       Xc_tmp_bsln <- IndividualDataPP$training.data %>%

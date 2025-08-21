@@ -80,10 +80,20 @@ predict.ReSurvFit <- function(object,
 
 
   is_baseline_model <- is.null(c(idata$categorical_features, idata$continuous_features))
+  browser()
 
-  hazard_frame <- object$hazard_frame %>%
-    select(-DP_i) %>%
-    rename(dev_f_i = f_i, cum_dev_f_i = cum_f_i)
+  # Convert to data.table if not already
+  hazard_frame <- as.data.table(object$hazard_frame)
+
+  # Drop DP_i
+  hazard_frame[, DP_i := NULL]
+
+  # Rename columns
+  setnames(hazard_frame, old = c("f_i", "cum_f_i"), new = c("dev_f_i", "cum_dev_f_i"))
+
+  # hazard_frame <- object$hazard_frame %>%
+  #   select(-DP_i) %>%
+  #   rename(dev_f_i = f_i, cum_dev_f_i = cum_f_i)
 
   hazard_frame_grouped <- pkg.env$covariate_mapping(
     hazard_frame = hazard_frame,
