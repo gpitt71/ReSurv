@@ -151,21 +151,21 @@ IndividualDataPP <- function(data,
                            degrees_of_freedom_cp=4){
 
 
-
+  # browser()
   # Work on a copy of the input data
-  tmp <- as.data.frame(data)
+  tmp <- as.data.table(data)
   # browser()
 
   # Accident periods encoding
-  x.ap <- pkg.env$check.dates.consistency(tmp[,accident_period],
+  x.ap <- pkg.env$check.dates.consistency(tmp[,get(accident_period)],
                                           input_time_granularity=input_time_granularity,
-                                          ap1=min(tmp[,accident_period]))
+                                          ap1=min(tmp[,get(accident_period)]))
   tmp.ap <- pkg.env$encode.variables(x.ap)
 
   # Calendar periods encoding
-  x.cp <- pkg.env$check.dates.consistency(tmp[,calendar_period],
+  x.cp <- pkg.env$check.dates.consistency(tmp[,get(calendar_period)],
                                           input_time_granularity=input_time_granularity,
-                                          ap1=min(tmp[,accident_period]))
+                                          ap1=min(tmp[,get(accident_period)]))
   tmp.cp <- pkg.env$encode.variables.cp(x.cp,
                                         ap1=min(x.ap))
   # Development periods encoding
@@ -211,54 +211,102 @@ IndividualDataPP <- function(data,
 
   max_dp_i =  pkg.env$maximum.time(years,input_time_granularity)
   # Build the variables you need
-  tmp = tmp %>%
-    mutate(AP_i=tmp.ap,
-           DP_i=tmp.dp,
-           RP_i=tmp.cp,
-           DP_rev_i = max_dp_i - DP_i+1,
-           TR_i = AP_i-1, #just setting truncation to max year simulated. and accounting for
-           I=1) %>%
-    as.data.frame()
+
+  tmp[,c("AP_i",
+         "DP_i",
+         "RP_i",
+         "DP_rev_i",
+         "TR_i",
+         "I"):=list(
+           tmp.ap,
+           tmp.dp,
+           tmp.cp,
+           max_dp_i-tmp.dp+1,
+           tmp.ap-1,
+           1
+         )]
+
+  # tmp = tmp %>%
+  #   mutate(AP_i=tmp.ap,
+  #          DP_i=tmp.dp,
+  #          RP_i=tmp.cp,
+  #          DP_rev_i = max_dp_i - DP_i+1,
+  #          TR_i = AP_i-1, #just setting truncation to max year simulated. and accounting for
+  #          I=1) %>%
+  #   as.data.frame()
 
   # In case you have an ID you only take the first row to avoid double counts.
   # We assume you can only have one reporting time.
   if(!is.null(id)){
-    tmp <- tmp %>%
-      group_by(get(id)) %>%
-      slice_head(n = 1) %>% as.data.frame()
+
+    tmp <- tmp[, .SD[1], by = id]
+
+    # tmp <- tmp %>%
+    #   group_by(get(id)) %>%
+    #   slice_head(n = 1) %>% as.data.frame()
   }
 
+
+
+  # Change columns that need to be changed
+  train <- tmp[, c("DP_rev_o", "AP_o") := list(
+    floor(max_dp_i * conversion_factor) - ceiling(DP_i * conversion_factor +
+                                                    ((AP_i - 1) %% (
+                                                      1 / conversion_factor
+                                                    )) * conversion_factor) + 1,
+    ceiling(AP_i * conversion_factor)
+  )][, TR_o := AP_o - 1][DP_rev_i > TR_i, ]
+
+  # Check that the categorical covariates are of factor class
+  train<- train[, (categorical_features) := lapply(.SD, as.factor), .SDcols = categorical_features]
+
+  train <- train[,.SD,.SDcols = c(id,
+                                  categorical_features,
+                                  continuous_features,
+                                  switch(calendar_period_extrapolation, 'RP_i', NULL),
+                                  "AP_i",
+                                  "AP_o",
+                                  "DP_i",
+                                  "DP_rev_i",
+                                  "DP_rev_o",
+                                  "TR_i",
+                                  "TR_o",
+                                  "I")]
+
+
   # Take the training data (upper triangle) and convert it from input_time_granularitys to output_time_granularitys
-  train= tmp %>%
-    filter(DP_rev_i > TR_i) %>%
-    mutate(
-      DP_rev_o = floor(max_dp_i*conversion_factor)-ceiling(DP_i*conversion_factor+((AP_i-1)%%(1/conversion_factor))*conversion_factor) +1,
-      AP_o = ceiling(AP_i*conversion_factor)
-    ) %>%
-    mutate(TR_o= AP_o-1) %>%
-    mutate(across(all_of(categorical_features),
-                  as.factor)) %>%
-    select(id,
-           all_of(categorical_features),
-           all_of(continuous_features),
-           all_of(switch(calendar_period_extrapolation, 'RP_i', NULL)),
-           AP_i,
-           AP_o,
-           DP_i,
-           DP_rev_i,
-           DP_rev_o,
-           TR_i,
-           TR_o,
-           I) %>%
-    as.data.frame()
+  # train= tmp %>%
+  #   filter(DP_rev_i > TR_i) %>%
+  #   mutate(
+  #     DP_rev_o = floor(max_dp_i*conversion_factor)-ceiling(DP_i*conversion_factor+((AP_i-1)%%(1/conversion_factor))*conversion_factor) +1,
+  #     AP_o = ceiling(AP_i*conversion_factor)
+  #   ) %>%
+  #   mutate(TR_o= AP_o-1) %>%
+  #   mutate(across(all_of(categorical_features),
+  #                 as.factor)) %>%
+  #   select(id,
+  #          all_of(categorical_features),
+  #          all_of(continuous_features),
+  #          all_of(switch(calendar_period_extrapolation, 'RP_i', NULL)),
+  #          AP_i,
+  #          AP_o,
+  #          DP_i,
+  #          DP_rev_i,
+  #          DP_rev_o,
+  #          TR_i,
+  #          TR_o,
+  #          I) %>%
+  #   as.data.frame()
 
 
 
   if(calendar_period_extrapolation){
-    train= train %>%
-      mutate(
-        RP_o=ceiling(RP_i*conversion_factor)) %>%
-      as.data.frame()
+    # train= train %>%
+    #   mutate(
+    #     RP_o=ceiling(RP_i*conversion_factor)) %>%
+    #   as.data.frame()
+
+    train[,RP_o:=ceiling(RP_i*conversion_factor)]
 
   }
 

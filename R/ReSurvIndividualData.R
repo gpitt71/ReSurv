@@ -371,7 +371,7 @@ ReSurv.IndividualDataPP <- function(IndividualDataPP,
                                   check_value = 1.85
 ){
 
-
+  browser()
   set.seed(random_seed)
 
   formula_ct <- as.formula(IndividualDataPP$string_formula_i)
