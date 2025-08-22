@@ -213,7 +213,6 @@ IndividualDataPP <- function(data,
                                                                output_time_granularity)
 
 
-
   if(is.null(years)){
 
     years <- pkg.env$total.years.in.the.data(input_time_granularity,

@@ -80,7 +80,7 @@ predict.ReSurvFit <- function(object,
 
 
   is_baseline_model <- is.null(c(idata$categorical_features, idata$continuous_features))
-  browser()
+  # browser()
 
   # Convert to data.table if not already
   hazard_frame <- as.data.table(object$hazard_frame)

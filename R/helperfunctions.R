@@ -1199,21 +1199,30 @@ pkg.env$model.matrix.creator <- function(data,
   This function encodes the matrices that we need for model fitting.
 
   "
-
+  # browser()
   #individual_data$training.data
-  X <- data %>%
-    dummy_cols(select_columns = select_columns, #individual_data$categorical_features
-               remove_selected_columns = TRUE,
-               remove_first_dummy = remove_first_dummy)
+  # X <- data %>%
+  #   dummy_cols(select_columns = select_columns, #individual_data$categorical_features
+  #              remove_selected_columns = TRUE,
+  #              remove_first_dummy = remove_first_dummy)
+
+  X <- dummy_cols(data,
+                  select_columns = select_columns, #individual_data$categorical_features
+                  remove_selected_columns = TRUE,
+                  remove_first_dummy = remove_first_dummy)
 
   tmp.cond=as.logical(apply(pkg.env$vgrepl(pattern=select_columns,
                                            x=colnames(X)), #individual_data$categorical_features
                             MARGIN=1,
                             sum))
 
-  X <- X %>%
-    select(colnames(X)[tmp.cond] ) %>%
-    as.data.frame()
+  setDT(X)
+
+  X <- X[,.SD,.SDcols = colnames(X)[tmp.cond]]
+
+  # X <- X %>%
+  #   select(colnames(X)[tmp.cond] ) %>%
+  #   as.data.frame()
 
   return(X)
 
@@ -1501,7 +1510,7 @@ pkg.env$covariate_mapping <- function(hazard_frame,
   Create a dimension table, that holds a link between inputted categorical features and the group, that is used for expected_values
   "
 
-  browser()
+  # browser()
   #Need to handle Accident/calender period effect seperatly
   if( (length(continuous_features)==1 & "AP_i" %in% continuous_features) |
       (length(continuous_features)==1 & "RP_i" %in% continuous_features) |
@@ -1812,7 +1821,7 @@ pkg.env$latest_observed_values_i <- function(data_reserve,
 
 pkg.env$name_covariates <-function(data, categorical_features, continuous_features){
 
-  browser()
+  # browser()
   feats <- c(categorical_features,continuous_features)
 
   if(is.null(feats)){return(0)}
@@ -2603,19 +2612,33 @@ pkg.env$benchmark_id <- function(X,
   Find benchmark value used in baseline calculation.
   "
 
-  benchmark <- cbind(X,DP_rev_i = Y$DP_rev_i) %>%
-    arrange(DP_rev_i) %>%
-    first() %>%
-    select(-DP_rev_i) %>%
-    as.vector() %>%
-    unlist() %>%
-    unname()
+  # benchmark <- cbind(X,DP_rev_i = Y$DP_rev_i) %>%
+  #   arrange(DP_rev_i) %>%
+  #   first() %>%
+  #   select(-DP_rev_i) %>%
+  #   as.vector() %>%
+  #   unlist() %>%
+  #   unname()
+  browser()
+  #new fast code
+  DT <- cbind(X, DP_rev_i = Y$DP_rev_i)
+  benchmark <- DT[order(DP_rev_i)][1, .SD, .SDcols = !'DP_rev_i']
+  # benchmark <- unname(unlist(res, use.names = FALSE))
+
+  # benchmark <- as.list(benchmark)
+  # benchmark <- as.data.table(benchmark)
+  # setnames(benchmark, names(newdata.mx))
 
   if(remove_first_dummy==TRUE){
-    newdata.mx <- data.frame(newdata.mx[,colnames(newdata.mx) %in% names(X)])
+    #old code
+    # newdata.mx <- data.frame(newdata.mx[,colnames(newdata.mx) %in% names(X)])
+    newdata.mx<- newdata.mx[,.SD,.SDcols = colnames(newdata.mx) %in% names(X)]
   }
 
-  benchmark_id <- which(apply(newdata.mx, 1, function(x) sum(benchmark == x) == length(benchmark) ))[1]
+  #old code
+  # benchmark_id <- which(apply(newdata.mx, 1, function(x) sum(benchmark == x) == length(benchmark) ))[1]
+
+  benchmark_id <- newdata.mx[benchmark, on = names(newdata.mx), which = TRUE][1]
 
 
 
@@ -3783,7 +3806,7 @@ manually_extract_info_for_scoring_cont <- function(ReSurvFit,
 
 
   if(hazard_model=="COX"){
-    browser()
+    # browser()
     data=IndividualDataPP$training.data
 
     X=data %>%
@@ -3833,7 +3856,7 @@ manually_extract_info_for_scoring_cont <- function(ReSurvFit,
                                   X=X_tmp_bsln,
                                   Y=Y)
 
-    browser()
+    # browser()
 
     bsln <- data.frame(baseline=bsln,
                        DP_rev_i=sort(as.integer(unique(IndividualDataPP$training.data$DP_rev_i))))

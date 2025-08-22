@@ -399,6 +399,7 @@ ReSurv.IndividualDataPP <- function(IndividualDataPP,
 
   if(hazard_model=="COX"){
 
+
     data=IndividualDataPP$training.data
 
     X=data[,.SD,
@@ -421,12 +422,14 @@ ReSurv.IndividualDataPP <- function(IndividualDataPP,
       X_tmp_bsln = data.frame(rep(1,dim(Y)[1]))
 
     }else{
-      browser()
+
       scaler <- pkg.env$scaler(continuous_features_scaling_method = continuous_features_scaling_method)
 
-      Xc_tmp_bsln <- IndividualDataPP$training.data %>%
-      reframe(across(all_of(IndividualDataPP$continuous_features),
-                     scaler))
+      # Xc_tmp_bsln <- IndividualDataPP$training.data %>%
+      # reframe(across(all_of(IndividualDataPP$continuous_features),
+      #                scaler))
+
+      Xc_tmp_bsln<- IndividualDataPP$training.data[,lapply(.SD,scaler),.SDcols=IndividualDataPP$continuous_features]
 
 
     if(!is.null(IndividualDataPP$categorical_features)){
@@ -436,6 +439,9 @@ ReSurv.IndividualDataPP <- function(IndividualDataPP,
                                       select_columns = IndividualDataPP$categorical_features,
                                       remove_first_dummy=T)
 
+
+
+      # browser()
 
       X_tmp_bsln=cbind(X_tmp_bsln,Xc_tmp_bsln)
 
@@ -485,7 +491,7 @@ ReSurv.IndividualDataPP <- function(IndividualDataPP,
 
 
 
-
+    browser()
     pred_relative <- model.out$cox_lp-model.out$cox_lp[benchmark_id]
 
     ###
@@ -728,7 +734,7 @@ ReSurv.IndividualDataPP <- function(IndividualDataPP,
 
     hazard_frame <- cbind(newdata,expg)
 
-    bsln <- data.frame(baseline=bsln,
+    bsln <- data.table(baseline=bsln,
                        DP_rev_i=sort(as.integer(unique(IndividualDataPP$training.data$DP_rev_i))))
 
     # compute the likelihood of the fitted model (upper triangle)
@@ -748,16 +754,31 @@ ReSurv.IndividualDataPP <- function(IndividualDataPP,
 
   ##################################################################################
 
+  browser()
+  # hazard_frame <- hazard_frame %>%
+  #   full_join(bsln,
+  #             by="DP_rev_i") %>%
+  #   as.data.frame() %>%
+  #   replace_na(list(baseline=0))
 
-  hazard_frame <- hazard_frame %>%
-    full_join(bsln,
-              by="DP_rev_i") %>%
-    as.data.frame() %>%
-    replace_na(list(baseline=0))
+  setDT(hazard_frame)
 
-  hazard_frame[,'hazard'] <- hazard_frame[,'baseline']*hazard_frame[,'expg']
+  # assuming hazard_frame and bsln are already data.tables
+  hazard_frame <- merge(
+    hazard_frame,
+    bsln,
+    by = "DP_rev_i",
+    all = TRUE
+  )
+
+  # replace NA in column "baseline" with 0
+  hazard_frame[is.na(baseline), baseline := 0]
 
 
+  # hazard_frame[,'hazard'] <- hazard_frame[,'baseline']*hazard_frame[,'expg']
+
+
+  hazard_frame[,hazard:=baseline*expg]
 
 
   #Add development and relevant survival values to the hazard_frame
