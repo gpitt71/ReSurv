@@ -153,21 +153,21 @@ IndividualDataPP <- function(data,
 
   # Work on a copy of the input data
   tmp <- as.data.table(data)
-  # browser()
 
   if(inherits(tmp[,get(accident_period)], "Date")){
     ap1=floor_date(min(tmp[,get(accident_period)]),"year")
 
-    ap1num <- pkg.env$check.dates.consistency(ap1,
-                                              input_time_granularity=input_time_granularity,
-                                              ap1=ap1)
 
   }else{
     ap1=min(tmp[,get(accident_period)])
 
+
+
   }
 
-
+  ap1num <- pkg.env$check.dates.consistency(ap1,
+                                            input_time_granularity=input_time_granularity,
+                                            ap1=ap1)
   # Accident periods encoding
   x.ap <- pkg.env$check.dates.consistency(tmp[,get(accident_period)],
                                           input_time_granularity=input_time_granularity,

@@ -377,7 +377,7 @@ ReSurv.IndividualDataPP <- function(IndividualDataPP,
                                   simplifier=FALSE
 ){
 
-  # browser()
+
   set.seed(random_seed)
 
   formula_ct <- as.formula(IndividualDataPP$string_formula_i)
@@ -441,7 +441,7 @@ ReSurv.IndividualDataPP <- function(IndividualDataPP,
 
 
 
-      # browser()
+
 
       X_tmp_bsln=cbind(X_tmp_bsln,Xc_tmp_bsln)
 
@@ -491,7 +491,7 @@ ReSurv.IndividualDataPP <- function(IndividualDataPP,
 
 
 
-    browser()
+
     pred_relative <- model.out$cox_lp-model.out$cox_lp[benchmark_id]
 
     ###
@@ -512,7 +512,7 @@ ReSurv.IndividualDataPP <- function(IndividualDataPP,
   }
 
   if(hazard_model=="NN"){
-    # browser()
+
 
     Y=IndividualDataPP$training.data[,c("DP_rev_i", "I", "TR_i")]
 
@@ -567,7 +567,6 @@ ReSurv.IndividualDataPP <- function(IndividualDataPP,
                                        seed = random_seed)
 
 
-    # browser()
 
     bsln <- pkg.env$baseline.calc(hazard_model = hazard_model,
                                   model.out = model.out,
@@ -754,7 +753,7 @@ ReSurv.IndividualDataPP <- function(IndividualDataPP,
 
   ##################################################################################
 
-  browser()
+  # browser()
   # hazard_frame <- hazard_frame %>%
   #   full_join(bsln,
   #             by="DP_rev_i") %>%
@@ -778,30 +777,79 @@ ReSurv.IndividualDataPP <- function(IndividualDataPP,
   # hazard_frame[,'hazard'] <- hazard_frame[,'baseline']*hazard_frame[,'expg']
 
 
+
+
+  # From hazard to development factors
+
   hazard_frame[,hazard:=baseline*expg]
+
+  hazard_frame[,dev_f_i := (1+(1-..eta)*hazard)/(1-..eta*hazard)]
+
+  hazard_frame[is.na(dev_f_i), dev_f_i := 1]
+
+  hazard_frame[dev_f_i < 0, dev_f_i := 1]
+
+  hazard_frame <- hazard_frame[order(DP_rev_i)]
+
+  # columns grouping
+  group_cols <- c(unique(c("AP_i",IndividualDataPP$continuous_features)),IndividualDataPP$categorical_features)
+
+  hazard_frame[, `:=`(
+    cum_dev_f_i = cumprod(dev_f_i),
+    S_i = fifelse(cumprod(dev_f_i) == 0, 0, 1 / cumprod(dev_f_i))
+  ), by = group_cols]
+
+  hazard_frame[, `:=`(
+    S_i_lead = shift(S_i, type = "lead", fill = 0),
+    S_i_lag  = shift(S_i, type = "lag",  fill = 1)
+  ), by = group_cols]
+
+  hazard_frame[, c("expg", "baseline", "hazard") := NULL]
+
+
+  cols_to_remove_na_from <- c("dev_f_i", "S_i", "S_i_lead", "S_i_lag", "cum_dev_f_i")
+
+  hazard_frame[, (cols_to_remove_na_from) := lapply(.SD, function(x) fifelse(is.na(x), 1, x)), .SDcols = cols_to_remove_na_from]
+
 
 
   #Add development and relevant survival values to the hazard_frame
-  hazard_frame_updated <- pkg.env$hazard_data_frame(hazard=hazard_frame,
-                                                    # Om.df=Om.df,
-                                                    eta_old=eta,
-                                                    categorical_features = IndividualDataPP$categorical_features,
-                                                    continuous_features = IndividualDataPP$continuous_features,
-                                                    calendar_period_extrapolation = IndividualDataPP$calendar_period_extrapolation)
+  # hazard_frame_updated <- pkg.env$hazard_data_frame(hazard=hazard_frame,
+  #                                                   # Om.df=Om.df,
+  #                                                   eta_old=eta,
+  #                                                   categorical_features = IndividualDataPP$categorical_features,
+  #                                                   continuous_features = IndividualDataPP$continuous_features,
+  #                                                   calendar_period_extrapolation = IndividualDataPP$calendar_period_extrapolation)
 
 
-  out_hz_frame <-  hazard_frame_updated %>%
-      mutate(DP_i=pkg.env$maximum.time(IndividualDataPP$years, IndividualDataPP$input_time_granularity)-DP_rev_i+1) %>%
-      relocate(DP_i, .after =  AP_i) %>%
-      rename(f_i=dev_f_i,
-             cum_f_i=cum_dev_f_i)
+
+
+
+ # prepare software output
+
+  ## some columns ordering
+  hazard_frame[,DP_i:=pkg.env$maximum.time(IndividualDataPP$years, IndividualDataPP$input_time_granularity)-DP_rev_i+1]
+
+  cols <- names(hazard_frame)
+  new_order <- append(cols[cols != "DP_i"], "DP_i", after = which(cols == "AP_i"))
+  setcolorder(hazard_frame, new_order)
+
+  ## some columns renaming
+  setnames(hazard_frame, old = c("dev_f_i", "cum_dev_f_i"), new = c("f_i", "cum_f_i"))
+
+
+  # out_hz_frame <-  hazard_frame_updated %>%
+  #     mutate(DP_i=pkg.env$maximum.time(IndividualDataPP$years, IndividualDataPP$input_time_granularity)-DP_rev_i+1) %>%
+  #     relocate(DP_i, .after =  AP_i) %>%
+  #     rename(f_i=dev_f_i,
+  #            cum_f_i=cum_dev_f_i)
 
   out=list(model.out=list(data=X,
                           model.out=model.out),
            simplifier=simplifier,
            is_lkh=is_lkh,
            os_lkh=os_lkh,
-           hazard_frame = out_hz_frame,
+           hazard_frame = hazard_frame,
            hazard_model = hazard_model,
            IndividualDataPP = IndividualDataPP)
 

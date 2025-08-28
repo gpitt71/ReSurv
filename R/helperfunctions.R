@@ -1104,7 +1104,7 @@ pkg.env$encode.variables <- function(x,ap1){
   We impose that the indexization starts from 1.
 
   "
-  # browser()
+
   seq <- min(c(x,ap1)):max(x)
 
   dim = length(seq)
@@ -1199,7 +1199,7 @@ pkg.env$model.matrix.creator <- function(data,
   This function encodes the matrices that we need for model fitting.
 
   "
-  # browser()
+  #
   #individual_data$training.data
   # X <- data %>%
   #   dummy_cols(select_columns = select_columns, #individual_data$categorical_features
@@ -1468,6 +1468,7 @@ pkg.env$hazard_data_frame <- function(hazard,
 
   "
 
+  # browser()
   continuous_features_group=unique(c("AP_i",continuous_features))
 
   #Calculate input development factors and corresponding survival probabilities
@@ -1510,7 +1511,7 @@ pkg.env$covariate_mapping <- function(hazard_frame,
   Create a dimension table, that holds a link between inputted categorical features and the group, that is used for expected_values
   "
 
-  # browser()
+  #
   #Need to handle Accident/calender period effect seperatly
   if( (length(continuous_features)==1 & "AP_i" %in% continuous_features) |
       (length(continuous_features)==1 & "RP_i" %in% continuous_features) |
@@ -1523,11 +1524,17 @@ pkg.env$covariate_mapping <- function(hazard_frame,
   ## Generate a grouping key, used for aggregating from input periods to output periods
 
 
-  hazard_frame$covariate <- pkg.env$name_covariates(
-    hazard_frame,
-    categorical_features,
-    continuous_features_group
-  )
+  setDT(hazard_frame)
+  feature_cols <- unique(c(categorical_features, continuous_features_group))
+
+  # Create feature.id efficiently
+  hazard_frame[, covariate := do.call(paste, c(.SD, sep = "_")), .SDcols = feature_cols]
+
+  # hazard_frame$covariate <- pkg.env$name_covariates(
+  #   hazard_frame,
+  #   categorical_features,
+  #   continuous_features_group
+  # )
 
 
   #Group is pr. covariate, output accident period
@@ -1821,7 +1828,7 @@ pkg.env$latest_observed_values_i <- function(data_reserve,
 
 pkg.env$name_covariates <-function(data, categorical_features, continuous_features){
 
-  # browser()
+  #
   feats <- c(categorical_features,continuous_features)
 
   if(is.null(feats)){return(0)}
@@ -1966,6 +1973,7 @@ pkg.env$input_hazard_frame <- function(
   hazard_frame_input_relevant <- hazard_frame %>%
     select(- c(cum_dev_f_i, S_i, S_i_lead, S_i_lag, covariate))
 
+  browser()
   #If AP is included as a grouping variable
   if(ncol(groups)==5){
     df_i_long <- df_i %>%
@@ -2121,7 +2129,7 @@ pkg.env$i_to_o_development_factor <- function(hazard_data_frame,
 
   }
 
-  # browser()
+  #
 
   # #select relevant hazard value group and add output variables, and other variables to help with grouping
   grouped_hazard_0 <- hazard_data_frame %>%
@@ -2619,12 +2627,13 @@ pkg.env$benchmark_id <- function(X,
   #   as.vector() %>%
   #   unlist() %>%
   #   unname()
-  browser()
+
   #new fast code
   DT <- cbind(X, DP_rev_i = Y$DP_rev_i)
   benchmark <- DT[order(DP_rev_i)][1, .SD, .SDcols = !'DP_rev_i']
-  # benchmark <- unname(unlist(res, use.names = FALSE))
 
+  ## probably not useful rows below
+  # benchmark <- unname(unlist(res, use.names = FALSE))
   # benchmark <- as.list(benchmark)
   # benchmark <- as.data.table(benchmark)
   # setnames(benchmark, names(newdata.mx))
@@ -2760,6 +2769,7 @@ pkg.env$simplified_fill_data_frame<-function(data,
                                   conversion_factor){
 
 
+  # browser()
   #Take the features unique values
   tmp.ls <- data %>%
     filter((pkg.env$maximum.time(years,input_time_granularity) - DP_i+1) > (AP_i-1))
@@ -2770,7 +2780,7 @@ pkg.env$simplified_fill_data_frame<-function(data,
             continuous_features)
 
 
-  tmp.ls <- tmp.ls[,.(.N),by=cols][,.(DP_i=1:max(data$DP_i)),by=cols]
+  tmp.ls <- tmp.ls[,.(.N),by=cols][,.(DP_i=1:pkg.env$maximum.time(years,input_time_granularity)),by=cols]
 
 
   #Take only the training data
@@ -3806,7 +3816,7 @@ manually_extract_info_for_scoring_cont <- function(ReSurvFit,
 
 
   if(hazard_model=="COX"){
-    # browser()
+    #
     data=IndividualDataPP$training.data
 
     X=data %>%
@@ -3856,7 +3866,7 @@ manually_extract_info_for_scoring_cont <- function(ReSurvFit,
                                   X=X_tmp_bsln,
                                   Y=Y)
 
-    # browser()
+    #
 
     bsln <- data.frame(baseline=bsln,
                        DP_rev_i=sort(as.integer(unique(IndividualDataPP$training.data$DP_rev_i))))
