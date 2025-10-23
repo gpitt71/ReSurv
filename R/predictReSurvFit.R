@@ -56,31 +56,63 @@
 predict.ReSurvFit <- function(object,
                               newdata = NULL,
                               grouping_method = "probability",
-                              lower_triangular_output = TRUE,
-                              groups_encoding_output =FALSE,
+                              lower_triangular_output = FALSE,
+                              minimal_output = FALSE,
                               check_value = 1.85,
                               ...) {
 
 
   if (!is.null(newdata)) {
-    pkg.env$check.newdata(newdata = newdata,
-                          pastdata = object$IndividualDataPP)
 
-    idata <- newdata
-    # hazard_frame <- adjust.predictions(ResurvFit=object,
-    #                                    hazard_model=object$hazard_model,
-    #                                    idata=idata)
+    pkg.env$check.newdata(newdata = newdata,
+                          pastdata = object$data_information)
+
+
+    ## copy the information you need ----
+
+    conversion_factor=newdata$data_information$conversion_factor
+    string_formula_i=newdata$data_information$string_formula_i
+    string_formula_o=newdata$data_information$string_formula_o
+    continuous_features=newdata$data_information$continuous_features
+    categorical_features=newdata$data_information$categorical_features
+    calendar_period_extrapolation=newdata$data_information$calendar_period_extrapolation
+    years=newdata$data_information$years
+    accident_period=newdata$data_information$accident_period
+    calendar_period=newdata$data_information$calendar_period
+    input_time_granularity=newdata$data_information$input_time_granularity
+    output_time_granularity=newdata$data_information$output_time_granularity
+
 
 
   } else{
     idata <- object$IndividualDataPP
 
+    ## copy the information you need ----
+
+    conversion_factor=object$data_information$conversion_factor
+    string_formula_i=object$data_information$string_formula_i
+    string_formula_o=object$data_information$string_formula_o
+    continuous_features=object$data_information$continuous_features
+    categorical_features=object$data_information$categorical_features
+    calendar_period_extrapolation=object$data_information$calendar_period_extrapolation
+    years=object$data_information$years
+    accident_period=object$data_information$accident_period
+    calendar_period=object$data_information$calendar_period
+    input_time_granularity=object$data_information$input_time_granularity
+    output_time_granularity=object$data_information$output_time_granularity
+
+
 
   }
 
+  # scalar used below (compute once)
+  max_dp_i <- pkg.env$maximum.time(
+    years,
+    input_time_granularity
+  )
 
-
-  is_baseline_model <- is.null(c(object$IndividualDataPP$categorical_features, object$IndividualDataPP$continuous_features))
+  # browser()
+  is_baseline_model <- is.null(c(categorical_features, continuous_features))
 
   # Convert to data.table if not already
   hazard_frame <- as.data.table(object$hazard_frame)
@@ -97,52 +129,35 @@ predict.ReSurvFit <- function(object,
 
   hazard_frame_grouped <- pkg.env$covariate_mapping(
     hazard_frame = hazard_frame,
-    categorical_features = idata$categorical_features,
-    continuous_features = idata$continuous_features,
-    conversion_factor = idata$conversion_factor,
-    calendar_period_extrapolation = idata$calendar_period_extrapolation
+    categorical_features = categorical_features,
+    continuous_features = continuous_features,
+    conversion_factor = conversion_factor,
+    calendar_period_extrapolation = calendar_period_extrapolation
   )
 
 
-  # browser()
 
-  if(object$simplifier){
+    # missing.obsevations <- pkg.env$simplified_fill_data_frame(
+    #   data = idata$full.data,
+    #   continuous_features = continuous_features,
+    #   categorical_features =
+    #     categorical_features,
+    #   years = years,
+    #   input_time_granularity =
+    #     input_time_granularity,
+    #   conversion_factor = conversion_factor
+    # )
 
-    missing.obsevations <- pkg.env$simplified_fill_data_frame(
-      data = idata$full.data,
-      continuous_features = idata$continuous_features,
-      categorical_features =
-        idata$categorical_features,
-      years = idata$years,
-      input_time_granularity =
-        idata$input_time_granularity,
-      conversion_factor = idata$conversion_factor
-    )
-
-  }else{
-  missing.obsevations <- pkg.env$fill_data_frame(
-    data = idata$full.data,
-    continuous_features = idata$continuous_features,
-    categorical_features =
-      idata$categorical_features,
-    years = idata$years,
-    input_time_granularity =
-      idata$input_time_granularity,
-    conversion_factor = idata$conversion_factor
-  )
-
-
-  }
 
   # latest_observed computation ----
   ## Retrieve total amount of observed claims as of the evaluation date ----
 
-  data_reserve = bind_rows(idata$training.data, missing.obsevations)
+  data_reserve = object$data_information$data_for_reserving
 
-  max_DP_i <- data_reserve[, .(DP_max_rev = min(max(DP_rev_i) - DP_i) + 1), by = AP_i]
+  max_DP_i <- unique(data_reserve[, .(DP_max_rev = min(max(DP_rev_i) - DP_i) + 1), by = AP_i])
 
   # Step 1: select relevant columns
-  cols_to_keep <- unique(c("AP_i", "AP_o", "DP_rev_i", "DP_i", idata$categorical_features, idata$continuous_features, "I"))
+  cols_to_keep <- unique(c("AP_i", "AP_o", "DP_rev_i", "DP_i", categorical_features, continuous_features, "I"))
   data_reserve2 <- data_reserve[, ..cols_to_keep]  # .. prefix needed for a vector of names
 
   # Step 2: convert AP_i to numeric
@@ -151,16 +166,16 @@ predict.ReSurvFit <- function(object,
   # Step 3: left join with max_DP_i by AP_i
   data_reserve2 <- max_DP_i[data_reserve2, on = "AP_i"]
 
-  if(is.null(idata$continuous_features)){
+  if(is.null(continuous_features)){
 
     # Define grouping columns
-    group_cols <- c(idata$categorical_features, "AP_i", "AP_o", "DP_max_rev")
+    group_cols <- c(categorical_features, "AP_i", "AP_o", "DP_max_rev")
 
     # Compute sum of I by group
     observed_so_far <- data_reserve2[, .(latest_I = sum(I)), by = group_cols]
 
     # Define grouping columns
-    group_cols <- c("AP_i", "AP_o", idata$categorical_features, "DP_rev_i", "DP_i")
+    group_cols <- c("AP_i", "AP_o", categorical_features, "DP_rev_i", "DP_i")
 
     # Summarize I by group
     observed_dp_rev_i <- data_reserve2[, .(I = sum(I)), by = group_cols]
@@ -168,7 +183,7 @@ predict.ReSurvFit <- function(object,
     ## add the group dimension
 
     # Define feature columns
-    feature_cols <- c(idata$categorical_features, idata$continuous_features)
+    feature_cols <- c(categorical_features, continuous_features)
 
     # Create feature.id efficiently
     observed_so_far[, covariate := do.call(paste, c(.SD, sep = "_")), .SDcols = feature_cols]
@@ -188,62 +203,76 @@ predict.ReSurvFit <- function(object,
     observed_dp_rev_i <- observed_dp_rev_i[, .(AP_i, group_i, DP_max_rev, latest_I)]
 
 
+    out <- pkg.env$latest_observed_values_i(data_reserve,
+                                            hazard_frame_grouped$groups,
+                                                 categorical_features,
+                                            continuous_features,
+                                                 FALSE)
+
+
 
   }else{
 
-    if(length(idata$continuous_features)==1 & "AP_i" %in% idata$continuous_features){
+    # if(length(continuous_features)==1 & "AP_i" %in% continuous_features){
+    #
+    #   continuous_features_group<-NULL
+    #
+    # }else{
+    #
+    #   continuous_features_group <- continuous_features[!(continuous_features %in% c("AP_i","RP_i") )]
+    #
+    # }
 
-      continuous_features_group<-NULL
-
-    }else{
-
-      continuous_features_group <- idata$continuous_features[!(idata$continuous_features %in% c("AP_i","RP_i") )]
-
-    }
-
-    if(is.null(continuous_features_group)){
-
-      group_cols <- c("AP_i", "AP_o", idata$categorical_features, "DP_max_rev")
-      observed_so_far <- data_reserve2[, .(latest_I = sum(I)), by = group_cols]
-
-      # Define grouping columns
-      group_cols <- c("AP_i", "AP_o", idata$categorical_features, "DP_rev_i", "DP_i")
-
-      # Summarise
-      observed_dp_rev_i <- data_reserve2[, .(I = sum(I)), by = group_cols]
-
-
-    }else{
-
-      # Define grouping columns
-      group_cols <- c("AP_i", "AP_o", idata$categorical_features, continuous_features_group, "DP_max_rev")
-
-      # Summarise
-      observed_so_far <- data_reserve2[, .(latest_I = sum(I)), by = group_cols]
-
-
-      # Define grouping columns
-      group_cols <- c("AP_i", "AP_o", idata$categorical_features, continuous_features_group, "DP_rev_i", "DP_i")
-
-      # Summarise
-      observed_dp_rev_i <- data_reserve2[, .(I = sum(I)), by = group_cols]
+    # if(is.null(continuous_features_group)){
+    #
+    #   group_cols <- c("AP_i", "AP_o", categorical_features, "DP_max_rev")
+    #   # observed_so_far <- data_reserve2[, .(latest_I = sum(I)), by = group_cols]
+    #
+    #   # Define grouping columns
+    #   group_cols <- c("AP_i", "AP_o", categorical_features, "DP_rev_i", "DP_i")
+    #
+    #   # Summarise
+    #   # observed_dp_rev_i <- data_reserve2[, .(I = sum(I)), by = group_cols]
+    #
+    #
+    # }else{
+    #
+    #   # Define grouping columns
+    #   group_cols <- c("AP_i", "AP_o", categorical_features, continuous_features_group, "DP_max_rev")
+    #
+    #
+    #
+    #   # Define grouping columns
+    #   group_cols <- c("AP_i", "AP_o", categorical_features, continuous_features_group, "DP_rev_i", "DP_i")
+    #
+    #
+    # }
 
 
+    # Define grouping columns
+    group_cols <- unique(c("AP_i", "AP_o", categorical_features, continuous_features, "DP_max_rev"))
 
 
-    }
+    # Summarise
+    observed_so_far <- data_reserve2[, .(latest_I = sum(I)), by = group_cols]
+
+    # Define grouping columns
+    group_cols <- unique(c("AP_i", "AP_o", categorical_features, continuous_features, "DP_rev_i", "DP_i"))
+
+    # Summarise
+    observed_dp_rev_i <- data_reserve2[, .(I = sum(I)), by = group_cols]
 
 
 
     # Define feature columns
-    feature_cols <- c(idata$categorical_features, continuous_features_group)
+    feature_cols <- c(categorical_features, continuous_features[continuous_features!="AP_i"])
 
     # Create feature.id efficiently
     observed_so_far[, covariate := do.call(paste, c(.SD, sep = "_")), .SDcols = feature_cols]
     observed_dp_rev_i[, covariate := do.call(paste, c(.SD, sep = "_")), .SDcols = feature_cols]
 
 
-    time_features <- idata$continuous_features[idata$continuous_features %in% c("AP_i","RP_i")]
+    time_features <- continuous_features[continuous_features %in% c("AP_i","RP_i")]
 
 
     # Left join
@@ -277,10 +306,9 @@ predict.ReSurvFit <- function(object,
 
     }
 
-    # browser()
 
-  max_DP <- max(bind_rows(idata$training.data, missing.obsevations)$DP_rev_o)
-
+  max_DP <- pkg.env$maximum.time(years,
+                                 input_time_granularity = output_time_granularity)#max(bind_rows(idata$training.data, object$data_information$missing_data)$DP_rev_o)
 
 
   ## Computation of the expected IBNR ----
@@ -303,17 +331,18 @@ predict.ReSurvFit <- function(object,
   expected_i <- hazard_tmp[expected_i, on = .(DP_rev_i_key = DP_max_rev, AP_i, group_i)]
 
   # Step 4: fcase now can use DP_max_rev_keep
-  ## in this case you only go with the probability approach
-  expected_i[,U:=1]
-  ## alternative is to use the exposure approach:
-  # expected_i[, U := fcase(
-  #   S_i_lag == 1, latest_I,
-  #   DP_max_rev_keep == min(hazard_frame_grouped$hazard_group$DP_rev_i), latest_I,
-  #   S_ultimate_i == 0, 0,
-  #   AP_i != 1, latest_I / S_ultimate_i,
-  #   default = latest_I
-  # )]
+  ## in this part we DO use the exposure method.
+  expected_i[, U := fcase(
+    S_i_lag == 1, latest_I,
+    DP_max_rev_keep == min(hazard_frame_grouped$hazard_group$DP_rev_i), latest_I,
+    S_ultimate_i == 0, 0,
+    AP_i != 1, latest_I / S_ultimate_i,
+    default = latest_I
+  )]
 
+
+  expected_i_probability <- copy(expected_i)
+  expected_i_probability[, I_expected := 1*(S_i_lag - S_i)][, IBNR := fifelse(DP_rev_i < DP_max_rev_keep, I_expected, NA_real_)]
 
   # Step 5: compute I_expected
   expected_i[, I_expected := U*(S_i_lag - S_i)]
@@ -321,290 +350,303 @@ predict.ReSurvFit <- function(object,
   # Step 6: compute IBNR
   expected_i[, IBNR := fifelse(DP_rev_i < DP_max_rev_keep, I_expected, NA_real_)]
 
+
+
+
+
   # Step 7: keep only required columns
   expected_i <- expected_i[, .(AP_i, group_i, DP_rev_i, I_expected, IBNR)]
 
 
+  hazard_frame_input <- hazard_frame_grouped$hazard_group[
+    expected_i,
+    on = .(AP_i, group_i, DP_rev_i)
+  ]
+
+  hazard_frame_input[,DP_i:=max_dp_i-DP_rev_i +1]
 
 
 
-  browser()
+  # In case of output granularity different from input granularity, creating the output -----
 
-######################################
-  df_i <- pkg.env$retrieve_df_i(
-    hazard_data_frame = hazard_frame_grouped$hazard_group,
-    groups = hazard_frame_grouped$groups,
-    is_baseline_model = is_baseline_model
-  )
-##########################################
 
-  ## create df_i: this part assumes that adjust is false.
+  if (conversion_factor != 1 & !(minimal_output)) {
 
-  df_i <- unique(hazard_frame_grouped$hazard_group[, .(group_i, DP_rev_i, dev_f_i)])[
-    ,
-    dcast(.SD, DP_rev_i ~ group_i, value.var = "dev_f_i")
-  ][
-    ,
-    !"DP_rev_i"
+
+
+
+
+    # left join, derive variables, (optionally filter), then aggregate and select
+    expected_o <-expected_i[
+        , DP_i := max_dp_i - DP_rev_i + 1
+      ][
+        , `:=`(
+          AP_o     = ceiling(AP_i * conversion_factor),
+          DP_rev_o = ceiling(max_dp_i * conversion_factor) -
+            ceiling((DP_i + (AP_i - 1) %% (1 / conversion_factor)) * conversion_factor) + 1
+        )
+        # ][
+        #   DP_rev_o > 0  # <- uncomment to reintroduce the filter you commented out in dplyr
+      ][
+        , .(
+          I_expected = sum(I_expected, na.rm = TRUE),
+          IBNR       = sum(IBNR,       na.rm = TRUE)
+        ),
+        by = .(AP_o, DP_rev_o, group_o)
+      ][
+        , .(AP_o, group_o, DP_rev_o, I_expected, IBNR)
+      ]
+
+
+    hazard_data_frame <- merge(
+      hazard_frame_grouped$hazard_group,
+      hazard_frame_grouped$groups[, .(group_i, group_o)],
+      by = "group_i",
+      all.x = TRUE
+    )
+
+    observed_pr_dp_o <- merge(
+      observed_dp_rev_i,
+      hazard_frame_grouped$groups[, .(group_i, group_o)],
+      by = "group_i",
+      all.x = TRUE
+    )
+
+    latest_cumulative_o <- merge(
+      latest_cumulative,
+      hazard_frame_grouped$groups[, .(group_i, group_o)],
+      by = "group_i",
+      all.x = TRUE
+    )[
+      , .(latest_I = sum(latest_I, na.rm = TRUE)),
+      by = .(AP_i, group_o, DP_max_rev)
+    ]
+
+
+    expected_i <- merge(
+      expected_i_probability,
+      hazard_frame_grouped$groups[, .(group_i, group_o)],
+      by = "group_i",
+      all.x = TRUE
+    )
+
+
+    grouped_hazard_0 <- copy(hazard_frame_grouped$hazard_group)[
+      , DP_i := max_dp_i - DP_rev_i + 1
+    ][
+      , DP_rev_o := floor(max_dp_i * conversion_factor) -
+        ceiling(DP_i * conversion_factor +
+                  ((AP_i - 1) %% (1 / conversion_factor)) * conversion_factor) + 1
+    ][
+      DP_rev_o > 0
+    ]
+
+    # left join dp_ranges by (AP_i, DP_rev_o)
+    grouped_hazard_0 <- merge(
+      grouped_hazard_0,
+      object$data_information$dp_ranges,
+      by = c("AP_i", "DP_rev_o"),
+      all.x = TRUE
+    )
+
+    grouped_hazard_0[
+      hazard_frame_grouped$groups[, .(group_i, group_o)],
+      on = "group_i",
+      group_o := i.group_o
+    ]
+
+    # left join latest_cumulative_o by (group_o, AP_i)
+    grouped_hazard_0 <- merge(
+      grouped_hazard_0,
+      latest_cumulative_o[, .(group_o, AP_i, DP_max_rev, latest_I)],
+      by = c("group_o", "AP_i"),
+      all.x = TRUE
+    )
+
+    # left join observed_pr_dp_o by (group_o, AP_i, DP_rev_i)
+    grouped_hazard_0 <- merge(
+      grouped_hazard_0,
+      observed_pr_dp_o[,.(group_o,AP_i, DP_rev_i, I)],
+      by = c("group_o", "AP_i", "DP_rev_i"),
+      all.x = TRUE
+    )
+
+    # Create cumulative observed to find exposure for each period
+    cumulative_observed <- observed_pr_dp_o[
+      order(DP_i),                               # arrange by DP_i within groups
+      .(exposure  = cumsum(fifelse(is.na(I), 0, I)),   # cumulative sum, treating NA as 0
+        DP_rev_i  = DP_rev_i - 1,                      # shift DP_rev_i by -1
+        AP_i      = AP_i,
+        group_o   = group_o),
+      by = .(AP_i, group_o)
+    ][, .(AP_i, group_o, DP_rev_i, exposure)]          # select needed columns
+
+
+    exposures <- grouped_hazard_0[
+      , .SD[DP_rev_i == max(DP_rev_i)],
+      by = .(AP_i, DP_rev_o, group_o)
+    ]
+
+    exposures <- exposures[
+      cumulative_observed,
+      on = .(AP_i, group_o, max_dp = DP_rev_i),   # max_dp in exposures matches DP_rev_i in cumulative_observed
+      exposure := i.exposure
+    ]
+
+
+   # Where we do not have any observed correct exposure we extrapolate based on fitted hazard
+
+    # Step 1 + 2: select and add gm
+    no_exposure <- exposures[
+      , .(DP_rev_i, DP_rev_o, AP_i, group_o, S_i, DP_max_rev, latest_I)
+    ]
+
+    # Step 3: prepare hazard_data_frame for the join
+    hazard_tmp <- hazard_data_frame[
+      , .(DP_rev_i = DP_rev_i + 1,   # increment by 1
+          AP_i,
+          group_o,
+          S_ultimate_i = S_i)        # rename here
+    ]
+
+    # Step 4: left join
+    no_exposure <- merge(
+      no_exposure,
+      hazard_tmp,
+      by.x = c("DP_max_rev", "AP_i", "group_o"),
+      by.y = c("DP_rev_i",   "AP_i", "group_o"),
+      all.x = TRUE
+    )
+
+  # grouping method assumed to be probability
+  no_exposure[, U := 1 ]
+
+  no_exposure[
+    latest_I == 0, U := 0
+  ]
+
+  no_exposure[
+    , exposure_expected := U * S_i
+  ]
+
+  # final subset
+  no_exposure <- no_exposure[
+    , .(AP_i, group_o, DP_rev_o, DP_rev_i, exposure_expected)
   ]
 
 
-  ###############################################
-  if(!adjusted){
-
-    df_i <- hazard_data_frame %>%
-      select(group_i, DP_rev_i, dev_f_i) %>%
-      distinct() %>%
-      reshape2::dcast(DP_rev_i ~group_i, value.var="dev_f_i") %>%
-      select(-DP_rev_i)
-
-
-  }else{
-    df_i <- hazard_data_frame %>%
-      select(group_i, DP_rev_i, df_i_adjusted) %>%
-      distinct() %>%
-      reshape2::dcast(DP_rev_i ~group_i, value.var="df_i_adjusted") %>%
-      select(-DP_rev_i)
-  }
-
-  #We only have 5 columns in the case of AP being included as covariate
-  if(ncol(groups) == 5){
-    colnames(df_i) <- c(paste0("AP_i_",groups$AP_i,",", groups$covariate ))
-  }else{
-    colnames(df_i) <- c(groups$covariate )
-  }
-  #
-
-  if(is_baseline_model){
-
-    df_i <- df_i %>%
-      map_df(rev) %>%
-      mutate(DP_i=row_number())
-
-    return(df_i)
-
-  }else{
-    df_i <- as.data.frame(df_i[1:(nrow(df_i)-1),]) %>%
-      map_df(rev) %>%
-      mutate(DP_i=row_number())
-
-  }
-
-  return(df_i)
-  ##########################################################
-
-
-
-  # Creating the input granularity output ----
-
-  hazard_frame_input <- pkg.env$input_hazard_frame(
-    hazard_frame = hazard_frame_grouped$hazard_group,
-    expected_i = expected_i ,
-    categorical_features = idata$categorical_features,
-    continuous_features = idata$continuous_features,
-    df_i = df_i,
-    groups = hazard_frame_grouped$groups,
-    is_baseline_model = is_baseline_model
+  # join with no_exposure
+  exposures_combined <- merge(
+    exposures,
+    no_exposure,
+    by = c("AP_i", "DP_rev_o", "DP_rev_i", "group_o"),
+    all.x = TRUE
   )
+
+  # exposure_combined = coalesce(exposure_expected, 0)
+  exposures_combined[
+    , exposure_combined := fifelse(!is.na(exposure_expected), exposure_expected, 0)
+  ]
+
+
+  grouped_hazard_1 <- merge(
+    grouped_hazard_0,
+    expected_i[, .SD, .SDcols = setdiff(colnames(expected_i), c("group_i", "S_i","S_i_lag","latest_I"))],
+    by = c("AP_i", "group_o", "DP_rev_i"),
+    all.x = TRUE
+  )
+
+  # coalesce(I_expected, 0)
+  grouped_hazard_1[, I_combined := fifelse(!is.na(I_expected), I_expected, 0)]
+
+  # aggregate
+  grouped_hazard_2 <- grouped_hazard_1[
+    , .(observed = sum(I_combined, na.rm = TRUE)),
+    by = .(AP_i, DP_rev_o, group_o)
+  ]
+
+  # join exposures_combined
+  grouped_hazard_2 <- merge(
+    grouped_hazard_2,
+    exposures_combined,
+    by = c("AP_i", "group_o", "DP_rev_o"),
+    all.x = TRUE
+  )
+
+  # overwrite observed if latest_I == 0
+  grouped_hazard_2[latest_I == 0, observed := 0]
+
+  output_dev_factor <- grouped_hazard_2[
+    , .(dev_f_o = fifelse(
+      sum(exposure_combined, na.rm = TRUE) == 0,
+      1,
+      (sum(observed, na.rm = TRUE) + sum(exposure_combined, na.rm = TRUE)) /
+        sum(exposure_combined, na.rm = TRUE)
+    )),
+    by = .(DP_rev_o, group_o)
+  ]
+
+  output_dev_factor[,DP_o:=pkg.env$maximum.time(
+    years,
+    output_time_granularity
+  )-DP_rev_o +1]
+
+
+  ## 1) Keep only selected features from the first table (plus join keys and useful IDs)
+  cols_to_keep <- unique(c("AP_i", "covariate", "group_i",
+                           categorical_features, continuous_features))
+  cols_to_keep <- intersect(names(hazard_frame_input), cols_to_keep)
+
+  dt1 <- copy(hazard_frame_input)[, ..cols_to_keep]
+
+  ## 2) Merge groups into dt1 by covariate and group_i
+  ##    (keeps all rows of dt1, adds AP_o/group_o from groups)
+  dtm <- hazard_frame_grouped$groups[
+    dt1, on = .(covariate, group_i)
+  ]
+
+  ## 3) For each distinct group_o, keep the first row (by AP_i; adjust if you prefer another order)
+  setorder(dtm, group_o, AP_i)
+  result <- dtm[!is.na(group_o), .SD[1L], by = group_o]
+
+  # Continuous covariates excluding AP_i, group_o, AP_o
+  keep_cont <- c(setdiff(continuous_features, c("AP_i")), "group_o", "AP_o")
+
+  # Final set = categorical covariates + filtered continuous covariates
+  final_cols <- unique(c(categorical_features, keep_cont))
+  final_cols <- intersect(names(result), final_cols)  # guard against typos/missing cols
+
+  final_result <- result[, ..final_cols]
+
+  hazard_frame_output <- expected_o[
+    final_result,
+    on = .(AP_o, group_o)
+  ]
+
+  # Join on DP_rev_o and group_o
+  hazard_frame_output <- output_dev_factor[
+    hazard_frame_output,
+    on = .(DP_rev_o, group_o)
+  ]
+
+  # Replace NA dev_f_o with 1
+  hazard_frame_output[is.na(dev_f_o), dev_f_o := 1]
 
 
 
   # browser()
-
-  # In case of output granularity different from input granularity, creating the output -----
-
-  if (idata$conversion_factor != 1) {
-    development_periods <- distinct(select(data.frame(idata$training), AP_i, AP_o))
-
-    # Calculate the minimum and maximum development periods for each row in development_periods for each DP_rev_o
-    dp_ranges <- t(lapply(1:max_DP, function(DP_rev_o) {
-      cbind(
-        DP_rev_o,
-        development_periods,
-        min_dp = with(
-          development_periods,
-          AP_i + 1 / (idata$conversion_factor) * (DP_rev_o - AP_o)
-        ),
-        max_dp = with(
-          development_periods,
-          AP_i - 1 + 1 / (idata$conversion_factor) * (DP_rev_o - AP_o + 1)
-        )
-      )
-    }))
-
-    dp_ranges <- do.call(rbind, dp_ranges)
-
-
-    #check_input_hazard <- pkg.env$check_input_hazard(hazard_frame_input,
-    #                           check_value=check_value)
-
-    #If we exeed the check value, we calculate on ouput granularity, predict on output granularity, and distribute evenly in the relevant input-periods.
-    #From here we do simple chain-ladder to calculate new development factor.
-    if (#check_input_hazard
-      FALSE # I guess we  can remove this part if not used?
-      ) {
-      development_factor_o <- pkg.env$i_to_o_development_factor(
-        hazard_data_frame = hazard_frame_grouped$hazard_group,
-        expected_i = expected_i,
-        dp_ranges = dp_ranges,
-        groups = hazard_frame_grouped$groups,
-        observed_pr_dp = latest_observed$observed_pr_dp,
-        latest_cumulative = latest_observed$latest_cumulative,
-        conversion_factor = idata$conversion_factor,
-        grouping_method = "probability",
-        min_DP_rev_i = min(hazard_frame_grouped$hazard_group$DP_rev_i)
-      )
-
-      if (ncol(hazard_frame_grouped$groups) == 5) {
-        colnames(development_factor_o) <- unique(c(
-          paste0(
-            "AP_o_",
-            hazard_frame_grouped$groups$AP_o,
-            ",",
-            hazard_frame_grouped$groups$covariate
-          )
-        ))
-      }
-      else{
-        colnames(development_factor_o) <- c(hazard_frame_grouped$groups$covariate)
-      }
-
-      df_o <- as.data.frame(development_factor_o[1:(nrow(development_factor_o) -
-                                                    1), ]) %>%
-        map_df(rev) %>%
-        mutate(DP_o = row_number())
-
-      #We only update for relevant periods, hence for example for accident periods, where we have already seen the development, we just put to 1.
-      hazard_frame_grouped$hazard_group <- pkg.env$update_hazard_frame(
-        hazard_frame_input = hazard_frame_input,
-        hazard_frame_grouped = hazard_frame_grouped$hazard_group,
-        df_o = df_o,
-        latest_observed_i = latest_observed$observed_pr_dp,
-        groups = hazard_frame_grouped$groups,
-        categorical_features = idata$categorical_features,
-        continuous_features = idata$continuous_features,
-        conversion_factor = idata$conversion_factor,
-        check_value = check_value
-      )
-
-      expected_i <- pkg.env$predict_i(
-        hazard_data_frame = hazard_frame_grouped$hazard_group,
-        latest_cumulative = latest_observed$latest_cumulative,
-        grouping_method = "exposure"
-      )
-
-      df_i <- pkg.env$retrieve_df_i(
-        hazard_data_frame = hazard_frame_grouped$hazard_group,
-        groups = hazard_frame_grouped$groups,
-        adjusted = T
-      )
-
-      hazard_frame_input <- pkg.env$input_hazard_frame(
-        hazard_frame = hazard_frame_grouped$hazard_group,
-        expected_i = expected_i ,
-        categorical_features = idata$categorical_features,
-        continuous_features = idata$continuous_features,
-        df_i = df_i,
-        groups = hazard_frame_grouped$groups,
-        adjusted = T
-      )
-
-
-
-  }
-
-  expected_o <- pkg.env$predict_o(
-    expected_i = expected_i,
-    groups = hazard_frame_grouped$groups,
-    conversion_factor = idata$conversion_factor,
-    years = object$IndividualDataPP$years,
-    input_time_granularity = object$IndividualDataPP$input_time_granularity
-  )
-
-
-  development_factor_o <- pkg.env$i_to_o_development_factor(
-    hazard_data_frame = hazard_frame_grouped$hazard_group,
-    expected_i = expected_i,
-    dp_ranges = dp_ranges,
-    groups = hazard_frame_grouped$groups,
-    observed_pr_dp = latest_observed$observed_pr_dp,
-    latest_cumulative = latest_observed$latest_cumulative,
-    conversion_factor = idata$conversion_factor,
-    grouping_method = grouping_method,
-    min_DP_rev_i = min(hazard_frame_grouped$hazard_group$DP_rev_i),
-    years = object$IndividualDataPP$years,
-    input_time_granularity = object$IndividualDataPP$input_time_granularity
-  )
-
-
-
-  #We only have 5 groups if AP is included as a covariate
-  if (ncol(hazard_frame_grouped$groups) == 5) {
-    colnames(development_factor_o) <- unique(c(
-      paste0(
-        "AP_o_",
-        hazard_frame_grouped$groups$AP_o,
-        ",",
-        hazard_frame_grouped$groups$covariate
-      )
-    ))
-  }
-  else{
-    if (is_baseline_model) {
-      colnames(development_factor_o) <- "0"
-    } else{
-      colnames(development_factor_o) <- c(hazard_frame_grouped$groups$covariate)
-    }
-  }
-
-  df_o <- as.data.frame(development_factor_o[1:(nrow(development_factor_o) -
-                                                  1), ]) %>%
-    map_df(rev) %>%
-    mutate(DP_o = row_number())
-
-
-  hazard_frame_output <- pkg.env$output_hazard_frame(
-    hazard_frame_input = hazard_frame_input,
-    expected_o = expected_o,
-    categorical_features = idata$categorical_features,
-    continuous_features = idata$continuous_features,
-    df_o = df_o,
-    groups = hazard_frame_grouped$groups,
-    is_baseline_model = is_baseline_model
-  )
-
   # Final output formatting: no actual computations from here on
 
-  max_dp_i = pkg.env$maximum.time(
-    object$IndividualDataPP$years,
-    object$IndividualDataPP$input_time_granularity
-  )
 
-  long_tr_input = hazard_frame_input %>%
-    mutate(DP_i = max_dp_i - DP_rev_i + 1) %>%
-    select(-expg, -baseline, -hazard, -DP_rev_i) %>%
-    relocate(DP_i, .after =  AP_i) %>%
-    rename(f_i = df_i, expected_counts = I_expected) %>%
-    as.data.frame()
+  setnames(hazard_frame_input, c("dev_f_i","I_expected"),c("f_i","expected_counts"))
+  setnames(hazard_frame_output, c("dev_f_o","I_expected"),c("f_o","expected_counts"))
 
-  long_tr_output = hazard_frame_output %>%
-    mutate(DP_o = max(DP_rev_o) - DP_rev_o + 1) %>%
-    select(-DP_rev_o) %>%
-    arrange(DP_o) %>%
-    relocate(DP_o, .after =  AP_o) %>%
-    rename(f_o = df_o, expected_counts = I_expected) %>%
-    as.data.frame()
+  hazard_frame_input[,c("expg",
+                        "baseline",
+                        "hazard",
+                        "DP_rev_i"):=NULL]
 
-  rm(list = c(
-    "df_o",
-    "df_i",
-    "hazard_frame_input",
-    "hazard_frame_output"
-  ))
-
-
-
-
+  hazard_frame_output[,c("DP_rev_o"):=NULL]
 
   out = list(
     ReSurvFit = object,
@@ -612,39 +654,28 @@ predict.ReSurvFit <- function(object,
     # df_output = as.data.frame(df_o),
     # df_input = as.data.frame(df_i),
     long_triangle_format_out = list(
-      input_granularity = long_tr_input,
-      output_granularity = long_tr_output
+      input_granularity = hazard_frame_input,
+      output_granularity = hazard_frame_output
     ),
-    predicted_counts = sum(long_tr_input$IBNR, na.rm = T),
-    grouping_method = grouping_method
+    predicted_counts = sum(hazard_frame_input$IBNR, na.rm = T)
   )
 
 
-  if(groups_encoding_output){
-
-    d1 <- as.data.table(hazard_frame_grouped$hazard_group[,unique(c(idata$continuous_features,
-                                                                    idata$categorical_features,
-                                                                    "group_i",
-                                                                    "DP_rev_i"))])[!duplicated(group_i)]
-
-    d2 <- as.data.table(hazard_frame_grouped$groups[,c("group_i",
-                                                       "group_o")])
-
-    d3 <- merge(d1,d2,by=c("group_i"))
-
-    out[['groups_encoding']] <- lower_triangle
-
-  }
-
 
   if (lower_triangular_output) {
-    ltr_input <- pkg.env$find_lt_input(long_tr_input, max_dp_i)
+    ltr_input <- pkg.env$find_lt_input(hazard_frame_input, max_dp_i)
+
+    setDT(ltr_input)
 
     ltr_output <- pkg.env$find_lt_output(
-      long_tr_output,
-      max(long_tr_output$DP_o),
-      cut_point = ceiling(max_dp_i * idata$conversion_factor)
+      hazard_frame_output,
+      max_DP,
+      cut_point = ceiling(max_dp_i * conversion_factor)
     )
+
+    setDT(ltr_output)
+
+    ltr_output[,.SD,.SDcols=colnames(ltr_output) %in% as.character(1:max_DP)]
 
     lower_triangle=list(input_granularity=ltr_input,
                         output_granularity=ltr_output)
@@ -657,36 +688,20 @@ predict.ReSurvFit <- function(object,
   return(out)
 }
 
-
-max_dp_i = pkg.env$maximum.time(object$IndividualDataPP$years,
-                                object$IndividualDataPP$input_time_granularity)
-
-long_tr_input = hazard_frame_input %>%
-  mutate(DP_i = max_dp_i - DP_rev_i + 1) %>%
-  select(-expg, -baseline, -hazard, -DP_rev_i) %>%
-  as.data.frame()
-
-
-# ltr_input <- pkg.env$find_lt_input(long_tr_input, max_dp_i)
+  setnames(hazard_frame_input, c("dev_f_i","I_expected"),c("f_i","expected_counts"))
+  hazard_frame_input[,c("expg",
+                        "baseline",
+                        "hazard",
+                        "DP_rev_i"):=NULL]
 
 out = list(
   ReSurvFit = object,
-  # I removed these two (memory issues)
-  # df_input = as.data.frame(df_i),
-  long_triangle_format_out = list(input_granularity = long_tr_input),
-  # lower_triangle = list(input_granularity = ltr_input),
-  predicted_counts = sum(long_tr_input$IBNR, na.rm = T),
-  grouping_method = grouping_method
+  long_triangle_format_out = list(input_granularity = hazard_frame_input),
+  predicted_counts = sum(hazard_frame_input$IBNR, na.rm = T)
 )
 
 if (lower_triangular_output) {
-  ltr_input <- pkg.env$find_lt_input(long_tr_input, max_dp_i)
-
-  ltr_output <- pkg.env$find_lt_output(
-    long_tr_output,
-    max(long_tr_output$DP_o),
-    cut_point = ceiling(max_dp_i * idata$conversion_factor)
-  )
+  ltr_input <- pkg.env$find_lt_input(hazard_frame_input, max_dp_i)
 
   lower_triangle=list(input_granularity=ltr_input)
 

@@ -380,7 +380,7 @@ ReSurv.IndividualDataPP <- function(IndividualDataPP,
 
   set.seed(random_seed)
 
-  formula_ct <- as.formula(IndividualDataPP$string_formula_i)
+  formula_ct <- as.formula(IndividualDataPP$data_information$string_formula_i)
 
   if(simplifier){
 
@@ -393,20 +393,19 @@ ReSurv.IndividualDataPP <- function(IndividualDataPP,
 
 
   # logical: check if we work with a baseline model
-  is_baseline_model = is.null(c(IndividualDataPP$categorical_features,
-                                IndividualDataPP$continuous_features))
+  is_baseline_model = is.null(c(IndividualDataPP$data_information$categorical_features,
+                                IndividualDataPP$data_information$continuous_features))
 
 
   if(hazard_model=="COX"){
 
-
     data=IndividualDataPP$training.data
 
     X=data[,.SD,
-           .SDcols=c(IndividualDataPP$continuous_features,IndividualDataPP$categorical_features)]
+           .SDcols=c(IndividualDataPP$data_information$continuous_features,IndividualDataPP$data_information$categorical_features)]
 
     # X=data %>%
-    #   select(c(IndividualDataPP$continuous_features,IndividualDataPP$categorical_features))
+    #   select(c(IndividualDataPP$data_information$continuous_features,IndividualDataPP$data_information$categorical_features))
 
     Y=data[,.SD,
            .SDcols=c("DP_rev_i", "I", "TR_i")]
@@ -429,14 +428,14 @@ ReSurv.IndividualDataPP <- function(IndividualDataPP,
       # reframe(across(all_of(IndividualDataPP$continuous_features),
       #                scaler))
 
-      Xc_tmp_bsln<- IndividualDataPP$training.data[,lapply(.SD,scaler),.SDcols=IndividualDataPP$continuous_features]
+      Xc_tmp_bsln<- IndividualDataPP$training.data[,lapply(.SD,scaler),.SDcols=IndividualDataPP$data_information$continuous_features]
 
 
-    if(!is.null(IndividualDataPP$categorical_features)){
+    if(!is.null(IndividualDataPP$data_information$categorical_features)){
 
 
       X_tmp_bsln <- pkg.env$model.matrix.creator(data= IndividualDataPP$training.data,
-                                      select_columns = IndividualDataPP$categorical_features,
+                                      select_columns = IndividualDataPP$data_information$categorical_features,
                                       remove_first_dummy=T)
 
 
@@ -477,8 +476,8 @@ ReSurv.IndividualDataPP <- function(IndividualDataPP,
 
       newdata.bs <- pkg.env$df.2.fcst.nn.pp(data=IndividualDataPP$training.data,
                                                      newdata=newdata,
-                                                     continuous_features=IndividualDataPP$continuous_features,
-                                                     categorical_features=IndividualDataPP$categorical_features)
+                                                     continuous_features=IndividualDataPP$data_information$continuous_features,
+                                                     categorical_features=IndividualDataPP$data_information$categorical_features)
 
       benchmark_id <- pkg.env$benchmark_id(X = X_tmp_bsln,
                                            Y =Y ,
@@ -527,13 +526,13 @@ ReSurv.IndividualDataPP <- function(IndividualDataPP,
       scaler <- pkg.env$scaler(continuous_features_scaling_method=continuous_features_scaling_method)
 
       Xc <- IndividualDataPP$training.data %>%
-        reframe(across(all_of(IndividualDataPP$continuous_features),
+        reframe(across(all_of(IndividualDataPP$data_information$continuous_features),
                        scaler))
 
-      if(!is.null(IndividualDataPP$categorical_features)){
+      if(!is.null(IndividualDataPP$data_information$categorical_features)){
 
         X <- pkg.env$model.matrix.creator(data= IndividualDataPP$training.data,
-                                      select_columns = IndividualDataPP$categorical_features)
+                                      select_columns = IndividualDataPP$data_information$categorical_features)
 
         X = cbind(X,Xc)
 
@@ -581,8 +580,8 @@ ReSurv.IndividualDataPP <- function(IndividualDataPP,
 
     newdata.mx <- pkg.env$df.2.fcst.nn.pp(data=IndividualDataPP$training.data,
                                           newdata=newdata,
-                                          continuous_features=IndividualDataPP$continuous_features,
-                                          categorical_features=IndividualDataPP$categorical_features)
+                                          continuous_features=IndividualDataPP$data_information$continuous_features,
+                                          categorical_features=IndividualDataPP$data_information$categorical_features)
     }
 
 
@@ -653,14 +652,14 @@ ReSurv.IndividualDataPP <- function(IndividualDataPP,
       scaler <- pkg.env$scaler(continuous_features_scaling_method = continuous_features_scaling_method)
 
       Xc <- IndividualDataPP$training.data %>%
-        reframe(across(all_of(IndividualDataPP$continuous_features),
+        reframe(across(all_of(IndividualDataPP$data_information$continuous_features),
                        scaler))
 
 
-      if(!is.null(IndividualDataPP$categorical_features)){
+      if(!is.null(IndividualDataPP$data_information$categorical_features)){
 
         X <- pkg.env$model.matrix.creator(data= IndividualDataPP$training.data,
-                                      select_columns = IndividualDataPP$categorical_features,
+                                      select_columns = IndividualDataPP$data_information$categorical_features,
                                       remove_first_dummy=T)
 
         X=cbind(X,Xc)
@@ -697,8 +696,8 @@ ReSurv.IndividualDataPP <- function(IndividualDataPP,
 
       newdata.mx <- pkg.env$df.2.fcst.xgboost.pp(data=IndividualDataPP$training.data,
                                                newdata=newdata,
-                                               continuous_features=IndividualDataPP$continuous_features,
-                                               categorical_features=IndividualDataPP$categorical_features)
+                                               continuous_features=IndividualDataPP$data_information$continuous_features,
+                                               categorical_features=IndividualDataPP$data_information$categorical_features)
       }
 
     pred <- predict(model.out,newdata.mx)
@@ -718,8 +717,8 @@ ReSurv.IndividualDataPP <- function(IndividualDataPP,
     #make to hazard relative to initial model, to have similiar interpretation as standard cox
     newdata.bs <- pkg.env$df.2.fcst.nn.pp(data=IndividualDataPP$training.data,
                                           newdata=newdata,
-                                          continuous_features=IndividualDataPP$continuous_features,
-                                          categorical_features=IndividualDataPP$categorical_features)
+                                          continuous_features=IndividualDataPP$data_information$continuous_features,
+                                          categorical_features=IndividualDataPP$data_information$categorical_features)
 
     benchmark_id <- pkg.env$benchmark_id(X = X,
                                          Y =Y ,
@@ -792,7 +791,7 @@ ReSurv.IndividualDataPP <- function(IndividualDataPP,
   hazard_frame <- hazard_frame[order(DP_rev_i)]
 
   # columns grouping
-  group_cols <- c(unique(c("AP_i",IndividualDataPP$continuous_features)),IndividualDataPP$categorical_features)
+  group_cols <- c(unique(c("AP_i",IndividualDataPP$data_information$continuous_features)),IndividualDataPP$data_information$categorical_features)
 
   hazard_frame[, `:=`(
     cum_dev_f_i = cumprod(dev_f_i),
@@ -804,7 +803,7 @@ ReSurv.IndividualDataPP <- function(IndividualDataPP,
     S_i_lag  = shift(S_i, type = "lag",  fill = 1)
   ), by = group_cols]
 
-  hazard_frame[, c("expg", "baseline", "hazard") := NULL]
+  # hazard_frame[, c("expg", "baseline", "hazard") := NULL]
 
 
   cols_to_remove_na_from <- c("dev_f_i", "S_i", "S_i_lead", "S_i_lag", "cum_dev_f_i")
@@ -828,7 +827,7 @@ ReSurv.IndividualDataPP <- function(IndividualDataPP,
  # prepare software output
 
   ## some columns ordering
-  hazard_frame[,DP_i:=pkg.env$maximum.time(IndividualDataPP$years, IndividualDataPP$input_time_granularity)-DP_rev_i+1]
+  hazard_frame[,DP_i:=pkg.env$maximum.time(IndividualDataPP$data_information$years, IndividualDataPP$data_information$input_time_granularity)-DP_rev_i+1]
 
   cols <- names(hazard_frame)
   new_order <- append(cols[cols != "DP_i"], "DP_i", after = which(cols == "AP_i"))
@@ -838,20 +837,118 @@ ReSurv.IndividualDataPP <- function(IndividualDataPP,
   setnames(hazard_frame, old = c("dev_f_i", "cum_dev_f_i"), new = c("f_i", "cum_f_i"))
 
 
-  # out_hz_frame <-  hazard_frame_updated %>%
-  #     mutate(DP_i=pkg.env$maximum.time(IndividualDataPP$years, IndividualDataPP$input_time_granularity)-DP_rev_i+1) %>%
-  #     relocate(DP_i, .after =  AP_i) %>%
-  #     rename(f_i=dev_f_i,
-  #            cum_f_i=cum_dev_f_i)
+
+  # Here we calculate the information that is needed for reserving - so we avoid carrying around copies of the main data.tables.
+  ## 1. Some features combination are missing but required for prediction.
+  ## 2. We need to find the range of development period required.
+  #################################################################################################################
+  data_information = IndividualDataPP$data_information
+
+  max_dp_i = pkg.env$maximum.time(IndividualDataPP$data_information$years, IndividualDataPP$data_information$input_time_granularity)
+
+  tmp.ls <- IndividualDataPP$training.data[
+    (max_dp_i - DP_i + 1) > (AP_i - 1)
+  ]
+
+
+  setDT(tmp.ls)
+
+  cols <- c(IndividualDataPP$data_information$categorical_features,
+            IndividualDataPP$data_information$continuous_features)
+
+
+  tmp.ls <- tmp.ls[,.(.N),by=cols][,.(DP_i=1:max_dp_i),by=cols] #
+
+
+  tmp.existing <- unique(
+    data[
+      (pkg.env$maximum.time(IndividualDataPP$data_information$years, IndividualDataPP$data_information$input_time_granularity) - DP_i + 1) > (AP_i - 1),
+      unique(c(IndividualDataPP$data_information$continuous_features, IndividualDataPP$data_information$categorical_features, "AP_i", "DP_i")),
+      with = FALSE
+    ]
+  )
+
+
+
+  test.missing <- dplyr::setdiff(x=tmp.ls,y=tmp.existing)
+
+  if(dim(test.missing)[1]==0){
+    tmp.missing <- NULL
+  }else{
+
+    tmp.missing <- copy(test.missing)
+
+    tmp.missing[,c("DP_rev_i",
+                   "TR_i",
+                   "I"):=list(max_dp_i - DP_i + 1L,
+                              AP_i - 1L,
+                              0L)]
+
+    tmp.missing<-tmp.missing[
+      DP_rev_i > TR_i,
+    ]
+
+
+    tmp.missing[,
+                c("DP_rev_o",
+                  "AP_o"
+                  ):=list(floor(max_dp_i * IndividualDataPP$data_information$conversion_factor) -
+                                   ceiling(DP_i * IndividualDataPP$data_information$conversion_factor +
+                                             ((AP_i - 1) %% (1 / IndividualDataPP$data_information$conversion_factor)) * IndividualDataPP$data_information$conversion_factor) + 1L,
+                                 ceiling(AP_i * IndividualDataPP$data_information$conversion_factor)
+                                 )
+
+                ][,TR_o:=AP_o - 1L]
+
+
+    tmp.missing[, (IndividualDataPP$data_information$categorical_features) := lapply(.SD, as.factor), .SDcols = IndividualDataPP$data_information$categorical_features]
+
+    tmp.missing[,.SD,
+                .SDcols = colnames(tmp.missing)%in%unique(c(
+                  IndividualDataPP$data_information$categorical_features,
+                  IndividualDataPP$data_information$continuous_features,
+                  "AP_i","AP_o","DP_i","DP_rev_i","DP_rev_o","TR_i","TR_o","I"
+                ))]
+
+
+
+
+
+    }
+
+    # the data that will be used for predictions is stored here.
+    data_information$data_for_reserving <-bind_rows(IndividualDataPP$training.data, tmp.missing )
+
+    ############################################################################
+
+    # Also compute the ranges of development periods needed for later
+    development_periods <- unique(IndividualDataPP$training.data[, .(AP_i, AP_o)])
+    cf <- IndividualDataPP$data_information$conversion_factor
+
+    # expand each (AP_i, AP_o) across all DP_rev_o = 1..max_DP and compute ranges
+    max_DP <- pkg.env$maximum.time(IndividualDataPP$data_information$years,
+                                   IndividualDataPP$data_information$output_time_granularity)
+
+    dp_ranges <- development_periods[
+      , .(DP_rev_o = 1:max_DP), by = .(AP_i, AP_o)  # expand rows per group
+    ][
+      , `:=`(
+        min_dp = AP_i + (DP_rev_o - AP_o) / cf,
+        max_dp = AP_i - 1 + (DP_rev_o - AP_o + 1) / cf
+      )
+    ]
+
+
+    data_information$dp_ranges <-dp_ranges
+    #################################################################################################################
 
   out=list(model.out=list(data=X,
                           model.out=model.out),
-           simplifier=simplifier,
-           is_lkh=is_lkh,
-           os_lkh=os_lkh,
            hazard_frame = hazard_frame,
-           hazard_model = hazard_model,
-           IndividualDataPP = IndividualDataPP)
+           data_information = data_information,
+           fit_information = list(hazard_model = hazard_model,
+                                  is_lkh=is_lkh,
+                                  os_lkh=os_lkh))
 
   class(out) <- c('ReSurvFit')
 

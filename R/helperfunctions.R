@@ -1031,7 +1031,7 @@ pkg.env$check.newdata <- function(newdata,
   # cf <- pkg.env$conversion.factor.of.time.units(pastdata$input_time_granularity,
   #                                               newdata$output_time_granularity)
 
-  if(!identical(pastdata$input_time_unit,newdata$input_time_unit)){
+  if(!identical(pastdata$input_time_unit,newdata$data_information$input_time_unit)){
 
     stop('newdata must have the same input granularity as pastdata.')
 
@@ -1044,7 +1044,7 @@ pkg.env$check.newdata <- function(newdata,
 
   }
 
-  newfeatures <- c(newdata$categorical_features, newdata$continuous_features)
+  newfeatures <- c(newdata$data_information$categorical_features, newdata$data_information$continuous_features)
   pastfeatures <- c(pastdata$categorical_features, pastdata$continuous_features)
 
   if(!identical(newfeatures,pastfeatures)){
@@ -1365,6 +1365,26 @@ pkg.env$fit_cox_model <- function(data,
   return(out)
 }
 
+
+pkg.env$fit_glmnet_proportional_model <- function(data,
+                                  formula_ct,
+                                  newdata){
+  "This function is the fitting routine for the cox model."
+
+  cox <- coxph(formula_ct, data=data, ties="efron")
+  cox_lp <- predict(cox,newdata=newdata,'lp',reference='zero')
+
+  cox_training_lp <- predict(cox,newdata=data %>% arrange(DP_rev_i) %>% as.data.frame(),'lp',reference='zero')
+
+  out <- list(
+    cox=cox,
+    cox_lp=cox_lp,
+    expg = exp(cox_lp),
+    train_expg= cox_training_lp#exp(cox_training_lp)
+  )
+
+  return(out)
+}
 
 
 
@@ -1750,7 +1770,7 @@ pkg.env$latest_observed_values_i <- function(data_reserve,
     #For now we let the handle be false, this is part of an on-going calendar-period implementation
     handle = 2
     if(is.null(continuous_features_group)){
-
+      handle = 2
       observed_so_far <-
         switch(handle,
                data_reserve2 %>%  group_by(pick(AP_i, AP_o,  RP_i, all_of(categorical_features),
@@ -2104,9 +2124,7 @@ pkg.env$i_to_o_development_factor <- function(hazard_data_frame,
     left_join(groups[,c("group_i", "group_o")], by =c("group_i"))
 
   observed_pr_dp_o  <- lazy_dt(observed_pr_dp) %>%
-    left_join(groups[,c("group_i", "group_o")], by =c("group_i"))# %>%
-  #group_by(AP_i, group_o, DP_rev_i, DP_i) %>%
-  #summarize(I = sum(I, na.rm=T), .groups = "drop")
+    left_join(groups[,c("group_i", "group_o")], by =c("group_i"))
 
   latest_cumulative_o <- lazy_dt(latest_cumulative) %>%
     left_join(groups[,c("group_i", "group_o")], by =c("group_i")) %>%
@@ -2211,6 +2229,8 @@ pkg.env$i_to_o_development_factor <- function(hazard_data_frame,
                                (sum(observed)+  sum(exposure_combined))/sum(exposure_combined)),.groups="drop" ) %>%
     as.data.table() %>%
     dcast(DP_rev_o ~group_o, value.var="dev_f_o")
+
+
 
 
   return(output_dev_factor[,-c("DP_rev_o")])
@@ -2445,8 +2465,8 @@ pkg.env$spline_hp <- function(hparameters,IndividualDataPP){
 simplified_df_2_fcst<- function(IndividualDataPP,
                                 hazard_model){
 
-  cont_f <- IndividualDataPP$continuous_features
-  cat_f <- IndividualDataPP$categorical_features
+  cont_f <- IndividualDataPP$data_information$continuous_features
+  cat_f <- IndividualDataPP$data_information$categorical_features
   columns_for_grouping <- unique(c(cont_f,cat_f,"AP_i"))
 
   tmp <- as.data.table(IndividualDataPP$training.data)
@@ -2472,14 +2492,14 @@ simplified_df_2_fcst<- function(IndividualDataPP,
 create.df.2.fcst <- function(IndividualDataPP,
                              hazard_model){
 
-  l1 <- lapply(IndividualDataPP$training.data %>% select(IndividualDataPP$categorical_features), levels)
-  l2 <- lapply(IndividualDataPP$training.data %>% select(IndividualDataPP$continuous_features), unique)
+  l1 <- lapply(IndividualDataPP$training.data %>% select(IndividualDataPP$data_information$categorical_features), levels)
+  l2 <- lapply(IndividualDataPP$training.data %>% select(IndividualDataPP$data_information$continuous_features), unique)
   l3 <- list()
   l4 <- list()
   l5 <- list()
 
-  if(!('AP_i'%in%c(IndividualDataPP$categorical_features,IndividualDataPP$continuous_features))){
-    l3$AP_i <- unique(IndividualDataPP$full.data[,'AP_i'])
+  if(!('AP_i'%in%c(IndividualDataPP$data_information$categorical_features,IndividualDataPP$data_information$continuous_features))){
+    l3$AP_i <- unique(IndividualDataPP$training.data[,'AP_i'])
   }else{
     l3 <- NULL
   }
@@ -2510,10 +2530,10 @@ create.df.2.fcst <- function(IndividualDataPP,
   # Time difference of 0.6656282 secs
 
 
-  if(IndividualDataPP$calendar_period_extrapolation & (hazard_model=='COX')){
+  if(IndividualDataPP$data_information$calendar_period_extrapolation & (hazard_model=='COX')){
     tmp$RP_i <- tmp$AP_i+tmp$DP_rev_i-1
   }else{
-    if(IndividualDataPP$calendar_period_extrapolation){
+    if(IndividualDataPP$data_information$calendar_period_extrapolation){
       warning("The calendar year component extrapolation is disregarded.
              The current implementation supports this feature only for the Cox model")}
 
@@ -2780,7 +2800,7 @@ pkg.env$simplified_fill_data_frame<-function(data,
             continuous_features)
 
 
-  tmp.ls <- tmp.ls[,.(.N),by=cols][,.(DP_i=1:pkg.env$maximum.time(years,input_time_granularity)),by=cols]
+  tmp.ls <- tmp.ls[,.(.N),by=cols][,.(DP_i=1:pkg.env$maximum.time(years,input_time_granularity)),by=cols] #
 
 
   #Take only the training data

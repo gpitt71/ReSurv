@@ -346,20 +346,19 @@ IndividualDataPP <- function(data,
 
 
   # Create and organize the output
-  out <- list(full.data = tmp,
-              starting.data = data,
-              training.data = train,
-              conversion_factor=conversion_factor,
-              string_formula_i=string_formula_i,
-              string_formula_o=string_formula_o,
-              continuous_features=continuous_features,
-              categorical_features=categorical_features,
-              calendar_period_extrapolation=calendar_period_extrapolation,
-              years=years,
-              accident_period=accident_period,
-              calendar_period=calendar_period,
-              input_time_granularity=input_time_granularity,
-              output_time_granularity=output_time_granularity)
+  out <- list(training.data = train,
+              data_information=list(conversion_factor=conversion_factor,
+                               string_formula_i=string_formula_i,
+                               string_formula_o=string_formula_o,
+                               continuous_features=continuous_features,
+                               categorical_features=categorical_features,
+                               calendar_period_extrapolation=calendar_period_extrapolation,
+                               years=years,
+                               accident_period=accident_period,
+                               calendar_period=calendar_period,
+                               input_time_granularity=input_time_granularity,
+                               output_time_granularity=output_time_granularity)
+              )
 
   # Return the correct output
   class(out) <- "IndividualDataPP"

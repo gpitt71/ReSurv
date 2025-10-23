@@ -9,6 +9,7 @@
   newdata = NULL,
   grouping_method = "probability",
   lower_triangular_output = TRUE,
+  minimal_output = FALSE,
   check_value = 1.85,
   ...
 )
@@ -30,6 +31,8 @@ Default is \code{"exposure"}.}
 \item{check_value}{\code{numeric}, check hazard value on initial granularity, if above threshold we increase granularity to try and adjust the development factor.}
 
 \item{...}{Additional arguments to pass to the predict function.}
+
+\item{groups_encoding_output}{\code{logical}, if set to \code{TRUE} we add a \code{data.table} containing the groups encoding to the \code{predict.ReSurvFit} output.}
 }
 \value{
 Predictions for the \code{ReSurvFit} model. It includes
