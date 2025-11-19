@@ -752,7 +752,7 @@ ReSurv.IndividualDataPP <- function(IndividualDataPP,
 
   ##################################################################################
 
-  # browser()
+
   # hazard_frame <- hazard_frame %>%
   #   full_join(bsln,
   #             by="DP_rev_i") %>%
