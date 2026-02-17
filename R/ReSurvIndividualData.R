@@ -378,14 +378,30 @@ ReSurv.IndividualDataPP <- function(IndividualDataPP,
 ){
 
 
+
+  cont_f <- IndividualDataPP$data_information$continuous_features
+  cat_f <- IndividualDataPP$data_information$categorical_features
+
   set.seed(random_seed)
 
   formula_ct <- as.formula(IndividualDataPP$data_information$string_formula_i)
 
   if(simplifier){
 
-    newdata <- simplified_df_2_fcst(IndividualDataPP=IndividualDataPP,
-                                     hazard_model=hazard_model)
+    columns_for_grouping <- unique(c(cont_f,cat_f,"AP_i"))
+
+    tmp <- as.data.table(IndividualDataPP$training.data)
+
+    out <- tmp[,.(.N),by=columns_for_grouping][,..columns_for_grouping]
+
+    l4 <- list()
+
+    l4$DP_rev_i <- min(IndividualDataPP$training.data[,'DP_rev_i']):max(IndividualDataPP$training.data[,'DP_rev_i'])
+
+    l4<-do.call(CJ, c(l4, sorted = FALSE))
+
+    newdata<-as.data.frame(setkey(out[,c(k=1,.SD)],k)[l4[,c(k=1,.SD)],allow.cartesian=TRUE][,k:=NULL])
+
 
   }else{
   newdata <- create.df.2.fcst(IndividualDataPP=IndividualDataPP,
@@ -393,8 +409,8 @@ ReSurv.IndividualDataPP <- function(IndividualDataPP,
 
 
   # logical: check if we work with a baseline model
-  is_baseline_model = is.null(c(IndividualDataPP$data_information$categorical_features,
-                                IndividualDataPP$data_information$continuous_features))
+  is_baseline_model = is.null(c(cont_f,
+                                cat_f))
 
 
   if(hazard_model=="COX"){
@@ -402,7 +418,8 @@ ReSurv.IndividualDataPP <- function(IndividualDataPP,
     data=IndividualDataPP$training.data
 
     X=data[,.SD,
-           .SDcols=c(IndividualDataPP$data_information$continuous_features,IndividualDataPP$data_information$categorical_features)]
+           .SDcols=c(cont_f,
+                     cat_f)]
 
     # X=data %>%
     #   select(c(IndividualDataPP$data_information$continuous_features,IndividualDataPP$data_information$categorical_features))
@@ -410,10 +427,20 @@ ReSurv.IndividualDataPP <- function(IndividualDataPP,
     Y=data[,.SD,
            .SDcols=c("DP_rev_i", "I", "TR_i")]
 
-    model.out <- pkg.env$fit_cox_model(data=data,
-                                       formula_ct=formula_ct,
-                                       newdata=newdata)
+    # model.out <- pkg.env$fit_cox_model(data=data,
+    #                                    formula_ct=formula_ct,
+    #                                    newdata=newdata)
+    cox <- coxph(formula_ct, data=data, ties="efron")
+    cox_lp <- predict(cox,newdata=newdata,'lp',reference='zero')
 
+    cox_training_lp <- predict(cox,newdata=data[order(DP_rev_i)],'lp',reference='zero')
+
+    model.out <- list(
+      cox=cox,
+      cox_lp=cox_lp,
+      expg = exp(cox_lp),
+      train_expg= cox_training_lp#exp(cox_training_lp)
+    )
     ## NEW BASELINE COMPUTATION (RESURV)
 
     if(is_baseline_model){
@@ -422,29 +449,37 @@ ReSurv.IndividualDataPP <- function(IndividualDataPP,
 
     }else{
 
-      scaler <- pkg.env$scaler(continuous_features_scaling_method = continuous_features_scaling_method)
-
-      # Xc_tmp_bsln <- IndividualDataPP$training.data %>%
-      # reframe(across(all_of(IndividualDataPP$continuous_features),
-      #                scaler))
-
-      Xc_tmp_bsln<- IndividualDataPP$training.data[,lapply(.SD,scaler),.SDcols=IndividualDataPP$data_information$continuous_features]
 
 
-    if(!is.null(IndividualDataPP$data_information$categorical_features)){
+
+    if(!is.null(cat_f)){
 
 
       X_tmp_bsln <- pkg.env$model.matrix.creator(data= IndividualDataPP$training.data,
-                                      select_columns = IndividualDataPP$data_information$categorical_features,
+                                      select_columns = cat_f,
                                       remove_first_dummy=T)
 
 
 
 
+      if(!is.null(cont_f)){
+        scaler <- pkg.env$scaler(continuous_features_scaling_method = continuous_features_scaling_method)
 
-      X_tmp_bsln=cbind(X_tmp_bsln,Xc_tmp_bsln)
+        Xc_tmp_bsln<- IndividualDataPP$training.data[,lapply(.SD,scaler),.SDcols=IndividualDataPP$data_information$continuous_features]
 
-    }else{
+        X_tmp_bsln=cbind(X_tmp_bsln,Xc_tmp_bsln)
+      }
+
+
+    }
+
+
+    if(!is.null(cont_f) & is.null(cat_f)){
+
+      scaler <- pkg.env$scaler(continuous_features_scaling_method = continuous_features_scaling_method)
+
+      Xc_tmp_bsln<- IndividualDataPP$training.data[,lapply(.SD,scaler),.SDcols=IndividualDataPP$data_information$continuous_features]
+
 
       X_tmp_bsln= Xc_tmp_bsln
 
@@ -458,7 +493,7 @@ ReSurv.IndividualDataPP <- function(IndividualDataPP,
                                   Y=Y)
 
 
-    bsln <- data.frame(baseline=bsln,
+    bsln <- data.table(baseline=bsln,
                        DP_rev_i=sort(as.integer(unique(IndividualDataPP$training.data$DP_rev_i))))
 
     ### make it relative
@@ -495,9 +530,12 @@ ReSurv.IndividualDataPP <- function(IndividualDataPP,
 
     ###
 
-    hazard_frame <- cbind(newdata, exp(pred_relative))
-    colnames(hazard_frame)[dim(hazard_frame)[2]]="expg"
+    # hazard_frame <- cbind(newdata, exp(pred_relative))
+    # colnames(hazard_frame)[dim(hazard_frame)[2]]="expg"
 
+    hazard_frame = copy(newdata)
+    setDT(hazard_frame)
+    hazard_frame[,expg:=exp(pred_relative)]
 
 
     is_lkh <- pkg.env$evaluate_lkh_cox(X_train=X,
@@ -759,7 +797,6 @@ ReSurv.IndividualDataPP <- function(IndividualDataPP,
   #   as.data.frame() %>%
   #   replace_na(list(baseline=0))
 
-  setDT(hazard_frame)
 
   # assuming hazard_frame and bsln are already data.tables
   hazard_frame <- merge(
@@ -853,8 +890,9 @@ ReSurv.IndividualDataPP <- function(IndividualDataPP,
 
   setDT(tmp.ls)
 
-  cols <- c(IndividualDataPP$data_information$categorical_features,
-            IndividualDataPP$data_information$continuous_features)
+  cols <- unique(c(IndividualDataPP$data_information$categorical_features,
+            IndividualDataPP$data_information$continuous_features,
+           "AP_i"))
 
 
   tmp.ls <- tmp.ls[,.(.N),by=cols][,.(DP_i=1:max_dp_i),by=cols] #

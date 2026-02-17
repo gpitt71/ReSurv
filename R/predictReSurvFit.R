@@ -151,7 +151,7 @@ predict.ReSurvFit <- function(object,
 
   # latest_observed computation ----
   ## Retrieve total amount of observed claims as of the evaluation date ----
-
+browser()
   data_reserve = object$data_information$data_for_reserving
 
   max_DP_i <- unique(data_reserve[, .(DP_max_rev = min(max(DP_rev_i) - DP_i) + 1), by = AP_i])
@@ -175,7 +175,7 @@ predict.ReSurvFit <- function(object,
     observed_so_far <- data_reserve2[, .(latest_I = sum(I)), by = group_cols]
 
     # Define grouping columns
-    group_cols <- c("AP_i", "AP_o", categorical_features, "DP_rev_i", "DP_i")
+    group_cols <- c("AP_i", "AP_o", categorical_features, "DP_rev_i", "DP_i", "DP_max_rev")
 
     # Summarize I by group
     observed_dp_rev_i <- data_reserve2[, .(I = sum(I)), by = group_cols]
@@ -200,7 +200,7 @@ predict.ReSurvFit <- function(object,
     observed_dp_rev_i <- hazard_frame_grouped$groups[observed_dp_rev_i, on = "covariate"]
 
     # Select relevant columns
-    observed_dp_rev_i <- observed_dp_rev_i[, .(AP_i, group_i, DP_max_rev, latest_I)]
+    # observed_dp_rev_i <- observed_dp_rev_i[, .(AP_i, group_i, DP_max_rev, latest_I)]
 
 
     out <- pkg.env$latest_observed_values_i(data_reserve,
